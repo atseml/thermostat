@@ -32,6 +32,7 @@ mod init_log;
 use init_log::init_log;
 mod pins;
 use pins::Pins;
+mod softspi;
 mod ad7172;
 mod ad5680;
 mod net;
@@ -89,6 +90,8 @@ fn main() -> ! {
     wd.start(WATCHDOG_INTERVAL.ms());
     wd.feed();
 
+    timer::setup(cp.SYST, clocks);
+
     let pins = Pins::setup(
         clocks, dp.TIM1, dp.TIM3,
         dp.GPIOA, dp.GPIOB, dp.GPIOC, dp.GPIOE, dp.GPIOF, dp.GPIOG,
@@ -97,8 +100,6 @@ fn main() -> ! {
     );
     let mut channels = Channels::new(pins);
     channels.calibrate_dac_value(0);
-
-    timer::setup(cp.SYST, clocks);
 
     #[cfg(not(feature = "generate-hwaddr"))]
     let hwaddr = EthernetAddress(NET_HWADDR);

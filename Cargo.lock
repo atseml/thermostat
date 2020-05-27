@@ -358,6 +358,7 @@ dependencies = [
  "cortex-m-rt",
  "hash2hwaddr",
  "log",
+ "nb",
  "nom",
  "num-traits",
  "panic-abort",

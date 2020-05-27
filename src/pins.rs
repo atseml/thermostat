@@ -1,6 +1,6 @@
 use stm32f4xx_hal::{
     adc::Adc,
-    hal::{blocking::spi::Transfer, digital::v2::OutputPin},
+    hal::{blocking::spi::Transfer, digital::v2::{InputPin, OutputPin}},
     gpio::{
         AF5, Alternate, Analog,
         gpioa::*,
@@ -20,6 +20,20 @@ use stm32f4xx_hal::{
     time::U32Ext,
 };
 use crate::channel::{Channel0, Channel1};
+use crate::softspi::SoftSpi;
+
+
+pub struct DummyInputPin;
+
+impl InputPin for DummyInputPin {
+    type Error = (); // `Void`
+    fn is_high(&self) -> Result<bool, Self::Error> {
+        Ok(false)
+    }
+    fn is_low(&self) -> Result<bool, Self::Error> {
+        Ok(true)
+    }
+}
 
 
 pub trait ChannelPins {
@@ -58,8 +72,8 @@ impl ChannelPins for Channel1 {
 /// SPI peripheral used for communication with the ADC
 pub type AdcSpi = Spi<SPI2, (PB10<Alternate<AF5>>, PB14<Alternate<AF5>>, PB15<Alternate<AF5>>)>;
 pub type AdcNss = PB12<Output<PushPull>>;
-type Dac0Spi = Spi<SPI4, (PE2<Alternate<AF5>>, NoMiso, PE6<Alternate<AF5>>)>;
-type Dac1Spi = Spi<SPI5, (PF7<Alternate<AF5>>, NoMiso, PF9<Alternate<AF5>>)>;
+type Dac0Spi = SoftSpi<PE2<Output<PushPull>>, PE6<Output<PushPull>>, DummyInputPin>;
+type Dac1Spi = SoftSpi<PF7<Output<PushPull>>, PF9<Output<PushPull>>, DummyInputPin>;
 
 pub type TecUMeasAdc = Adc<ADC3>;
 
@@ -196,14 +210,10 @@ impl Pins {
         clocks: Clocks, spi4: SPI4,
         sclk: PE2<M1>, sync: PE4<M2>, sdin: PE6<M3>
     ) -> (Dac0Spi, PE4<Output<PushPull>>) {
-        let sclk = sclk.into_alternate_af5();
-        let sdin = sdin.into_alternate_af5();
-        let spi = Spi::spi4(
-            spi4,
-            (sclk, NoMiso, sdin),
-            crate::ad5680::SPI_MODE,
-            crate::ad5680::SPI_CLOCK.into(),
-            clocks
+        let sclk = sclk.into_push_pull_output();
+        let sdin = sdin.into_push_pull_output();
+        let spi = SoftSpi::new(
+            sclk, sdin, DummyInputPin,
         );
         let sync = sync.into_push_pull_output();
 
@@ -214,14 +224,10 @@ impl Pins {
         clocks: Clocks, spi5: SPI5,
         sclk: PF7<M1>, sync: PF6<M2>, sdin: PF9<M3>
     ) -> (Dac1Spi, PF6<Output<PushPull>>) {
-        let sclk = sclk.into_alternate_af5();
-        let sdin = sdin.into_alternate_af5();
-        let spi = Spi::spi5(
-            spi5,
-            (sclk, NoMiso, sdin),
-            crate::ad5680::SPI_MODE,
-            crate::ad5680::SPI_CLOCK.into(),
-            clocks
+        let sclk = sclk.into_push_pull_output();
+        let sdin = sdin.into_push_pull_output();
+        let spi = SoftSpi::new(
+            sclk, sdin, DummyInputPin,
         );
         let sync = sync.into_push_pull_output();
 
