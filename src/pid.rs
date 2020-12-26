@@ -66,9 +66,8 @@ impl Controller {
         let p = f64::from(self.parameters.kp) * error;
 
         // integral
-        if let Some(last_output_val) = self.last_output
-        {
-            //anti integral windup
+        if let Some(last_output_val) = self.last_output {
+            // anti integral windup
             if last_output_val < self.parameters.output_max.into() && last_output_val > self.parameters.output_min.into()
             {
                 self.integral += error * time_delta;    
