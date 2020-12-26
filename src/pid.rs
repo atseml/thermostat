@@ -60,7 +60,7 @@ impl Controller {
         let time_delta = time_delta.get::<second>();
 
         // error
-        let error = input - self.target;
+        let error = self.target - input;
 
         // proportional
         let p = f64::from(self.parameters.kp) * error;
