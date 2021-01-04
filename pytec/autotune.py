@@ -2,8 +2,8 @@ import math
 import logging
 from time import time
 from collections import deque, namedtuple
-from pytec.client import Client
 from enum import Enum
+from pytec.client import Client
 
 # Based on hirshmann pid-autotune libiary
 # See https://github.com/hirschmann/pid-autotune
@@ -17,12 +17,10 @@ class PIDAutotuneState(Enum):
     STATE_SUCCEEDED = 'succeeded'
     STATE_FAILED = 'failed'
 
-class PIDAutotune():
-    
+class PIDAutotune():    
     PIDParams = namedtuple('PIDParams', ['Kp', 'Ki', 'Kd'])
 
-    PEAK_AMPLITUDE_TOLERANCE = 0.05
-    
+    PEAK_AMPLITUDE_TOLERANCE = 0.05    
 
     _tuning_rules = {
         "ziegler-nichols": [0.6, 1.2, 0.075],
@@ -36,19 +34,8 @@ class PIDAutotune():
     def __init__(self, setpoint, out_step=10, lookback=60, noiseband=0.5, sampletime=1.2):
         if setpoint is None:
             raise ValueError('setpoint must be specified')
-        # if out_step < 1:
-        #     raise ValueError('out_step must be greater or equal to 1')
-        # if sampletime < 1:
-        #     raise ValueError('sampletime must be greater or equal to 1')
-        # if lookback < sampletime:
-        #     raise ValueError('lookback must be greater or equal to sampletime')
-        # if out_min >= out_max:
-        #     raise ValueError('out_min must be less than out_max')
-
-        # self._time = time
-        # logging = logging.getLogger(type(self).__name__)
+        
         self._inputs = deque(maxlen=round(lookback / sampletime))
-        # self._sampletime = sampletime * 1000
         self._setpoint = setpoint
         self._outputstep = out_step
         self._noiseband = noiseband
@@ -65,18 +52,15 @@ class PIDAutotune():
         self._induced_amplitude = 0
         self._Ku = 0
         self._Pu = 0
-
     
     def state(self):
         """Get the current state."""
         return self._state
-
     
     def output(self):
         """Get the last output value."""
         return self._output
 
-    # @property
     def tuning_rules(self):
         """Get a list of all available tuning rules."""
         return self._tuning_rules.keys()
@@ -90,9 +74,7 @@ class PIDAutotune():
         """
         divisors = self._tuning_rules[tuning_rule]
         kp = self._Ku * divisors[0]
-        # ki = kp / (self._Pu / divisors[1])
         ki = divisors[1] * self._Ku / self._Pu
-        # kd = kp * (self._Pu / divisors[2])
         kd = divisors[2] * self._Ku * self._Pu
         return PIDAutotune.PIDParams(kp, ki, kd)
 
@@ -100,7 +82,8 @@ class PIDAutotune():
         """To autotune a system, this method must be called periodically.
 
         Args:
-            input_val (float): The input value.
+            input_val (float): The temperature input value.
+            time_input (float): Current time in seconds.
 
         Returns:
             `true` if tuning is finished, otherwise `false`.
@@ -110,10 +93,9 @@ class PIDAutotune():
         if (self._state == PIDAutotuneState.STATE_OFF
                 or self._state == PIDAutotuneState.STATE_SUCCEEDED
                 or self._state == PIDAutotuneState.STATE_FAILED):
-            self._initTuner(input_val, now)
+            self.init_tuner(input_val, now)
 
         self._last_run_timestamp = now
-        # print("temp : ", input_val)
 
         # check input and change relay state if necessary
         if (self._state == PIDAutotuneState.STATE_RELAY_STEP_UP
@@ -197,7 +179,6 @@ class PIDAutotune():
 
             if amplitude_dev < PIDAutotune.PEAK_AMPLITUDE_TOLERANCE:
                 self._state = PIDAutotuneState.STATE_SUCCEEDED
-                # logging.debug('peak finding succeeded')
         
         # if the autotune has not already converged
         # terminate after 10 cycles
@@ -225,13 +206,12 @@ class PIDAutotune():
                 print('rule: {0}'.format(rule))
                 print('Kp: {0}'.format(params.Kp))
                 print('Ki: {0}'.format(params.Ki))
-                print('Kd: {0}'.format(params.Kd))
-                
+                print('Kd: {0}'.format(params.Kd))                
 
             return True
         return False
 
-    def _initTuner(self, inputValue, timestamp):
+    def init_tuner(self, inputValue, timestamp):
         self._peak_type = 0
         self._peak_count = 0
         self._output = 0
@@ -245,7 +225,6 @@ class PIDAutotune():
         self._state = PIDAutotuneState.STATE_RELAY_STEP_UP
 
 def main():
-
     # Auto tune parameters
     # Thermostat channel
     channel = 0
@@ -260,7 +239,7 @@ def main():
 
     # logging.basicConfig(level=logging.DEBUG)
 
-    tec = Client() #(host="localhost", port=6667)
+    tec = Client() 
 
     data = next(tec.report_mode())
     ch = data[channel]
@@ -268,7 +247,6 @@ def main():
     tuner = PIDAutotune(target_temperature, output_step, lookback, noiseband, ch['interval'])
 
     for data in tec.report_mode():
-
         try:
             ch = data[channel]
 
