@@ -3,34 +3,40 @@ import logging
 from time import time
 from collections import deque, namedtuple
 from pytec.client import Client
+from enum import Enum
 
 # Based on hirshmann pid-autotune libiary
 # See https://github.com/hirschmann/pid-autotune
 # Which is in turn based on a fork of Arduino PID AutoTune Library
 # See https://github.com/t0mpr1c3/Arduino-PID-AutoTune-Library
 
-# Auto tune parameters
-# Thermostat channel
-channel = 0
-# Target temperature of the autotune routine, celcius
-target_temperature = 30
-# Value by which output will be increased/decreased from zero, amps
-output_step = 1
-# Reference period for local minima/maxima, seconds
-lookback = 3
-# Determines by how much the input value must overshoot/undershoot the setpoint, celcius
-noiseband = 1.5
-
-class PIDAutotune(object):
+if __name__ == "__main__":
     
-    PIDParams = namedtuple('PIDParams', ['Kp', 'Ki', 'Kd'])
+    # Auto tune parameters
+    # Thermostat channel
+    channel = 0
+    # Target temperature of the autotune routine, celcius
+    target_temperature = 30
+    # Value by which output will be increased/decreased from zero, amps
+    output_step = 1
+    # Reference period for local minima/maxima, seconds
+    lookback = 3
+    # Determines by how much the input value must overshoot/undershoot the setpoint, celcius
+    noiseband = 1.5
 
-    PEAK_AMPLITUDE_TOLERANCE = 0.05
+class PIDAutotuneState(Enum):
     STATE_OFF = 'off'
     STATE_RELAY_STEP_UP = 'relay step up'
     STATE_RELAY_STEP_DOWN = 'relay step down'
     STATE_SUCCEEDED = 'succeeded'
     STATE_FAILED = 'failed'
+
+class PIDAutotune():
+    
+    PIDParams = namedtuple('PIDParams', ['Kp', 'Ki', 'Kd'])
+
+    PEAK_AMPLITUDE_TOLERANCE = 0.05
+    
 
     _tuning_rules = {
         "ziegler-nichols": [0.6, 1.2, 0.075],
@@ -62,7 +68,7 @@ class PIDAutotune(object):
         self._noiseband = noiseband
         self._out_min = -out_step
         self._out_max = out_step
-        self._state = PIDAutotune.STATE_OFF
+        self._state = PIDAutotuneState.STATE_OFF
         self._peak_timestamps = deque(maxlen=5)
         self._peaks = deque(maxlen=5)
         self._output = 0
@@ -115,30 +121,30 @@ class PIDAutotune(object):
         """
         now = time_input * 1000
 
-        if (self._state == PIDAutotune.STATE_OFF
-                or self._state == PIDAutotune.STATE_SUCCEEDED
-                or self._state == PIDAutotune.STATE_FAILED):
+        if (self._state == PIDAutotuneState.STATE_OFF
+                or self._state == PIDAutotuneState.STATE_SUCCEEDED
+                or self._state == PIDAutotuneState.STATE_FAILED):
             self._initTuner(input_val, now)
 
         self._last_run_timestamp = now
         # print("temp : ", input_val)
 
         # check input and change relay state if necessary
-        if (self._state == PIDAutotune.STATE_RELAY_STEP_UP
+        if (self._state == PIDAutotuneState.STATE_RELAY_STEP_UP
                 and input_val > self._setpoint + self._noiseband):
-            self._state = PIDAutotune.STATE_RELAY_STEP_DOWN
+            self._state = PIDAutotuneState.STATE_RELAY_STEP_DOWN
             logging.debug('switched state: {0}'.format(self._state))
             logging.debug('input: {0}'.format(input_val))
-        elif (self._state == PIDAutotune.STATE_RELAY_STEP_DOWN
+        elif (self._state == PIDAutotuneState.STATE_RELAY_STEP_DOWN
                 and input_val < self._setpoint - self._noiseband):
-            self._state = PIDAutotune.STATE_RELAY_STEP_UP
+            self._state = PIDAutotuneState.STATE_RELAY_STEP_UP
             logging.debug('switched state: {0}'.format(self._state))
             logging.debug('input: {0}'.format(input_val))
 
         # set output
-        if (self._state == PIDAutotune.STATE_RELAY_STEP_UP):
+        if (self._state == PIDAutotuneState.STATE_RELAY_STEP_UP):
             self._output = self._initial_output + self._outputstep
-        elif self._state == PIDAutotune.STATE_RELAY_STEP_DOWN:
+        elif self._state == PIDAutotuneState.STATE_RELAY_STEP_DOWN:
             self._output = self._initial_output - self._outputstep
 
         # respect output limits
@@ -204,17 +210,17 @@ class PIDAutotune(object):
             logging.debug('amplitude deviation: {0}'.format(amplitude_dev))
 
             if amplitude_dev < PIDAutotune.PEAK_AMPLITUDE_TOLERANCE:
-                self._state = PIDAutotune.STATE_SUCCEEDED
+                self._state = PIDAutotuneState.STATE_SUCCEEDED
                 # logging.debug('peak finding succeeded')
         
         # if the autotune has not already converged
         # terminate after 10 cycles
         if self._peak_count >= 20:
             self._output = 0
-            self._state = PIDAutotune.STATE_FAILED
+            self._state = PIDAutotuneState.STATE_FAILED
             return True
 
-        if self._state == PIDAutotune.STATE_SUCCEEDED:
+        if self._state == PIDAutotuneState.STATE_SUCCEEDED:
             self._output = 0
             logging.debug('peak finding successful')
 
@@ -250,33 +256,34 @@ class PIDAutotune(object):
         self._peaks.clear()
         self._peak_timestamps.clear()
         self._peak_timestamps.append(timestamp)
-        self._state = PIDAutotune.STATE_RELAY_STEP_UP
+        self._state = PIDAutotuneState.STATE_RELAY_STEP_UP
 
-# logging.basicConfig(level=logging.DEBUG)
+if __name__ == "__main__":
 
-tec = Client() #(host="localhost", port=6667)
+    # logging.basicConfig(level=logging.DEBUG)
 
-data = next(tec.report_mode())
-ch = data[channel]
+    tec = Client() #(host="localhost", port=6667)
 
-tuner = PIDAutotune(target_temperature, output_step, lookback, noiseband, ch['interval'])
+    data = next(tec.report_mode())
+    ch = data[channel]
 
-for data in tec.report_mode():
+    tuner = PIDAutotune(target_temperature, output_step, lookback, noiseband, ch['interval'])
 
-    try:
-        ch = data[channel]
+    for data in tec.report_mode():
 
-        temperature = ch['temperature']
+        try:
+            ch = data[channel]
 
-        if (tuner.run(temperature, ch['time'])):
-            # logging.debug('true')
-            break
+            temperature = ch['temperature']
 
-        tunerOut = tuner.output()
+            if (tuner.run(temperature, ch['time'])):
+                break
 
-        tec.set_param("pwm", channel, "i_set" , tunerOut)
+            tunerOut = tuner.output()
 
-    except:
-        pass
+            tec.set_param("pwm", channel, "i_set" , tunerOut)
 
-tec.set_param("pwm", channel, "i_set" , channel)
+        except:
+            pass
+
+    tec.set_param("pwm", channel, "i_set" , channel)
