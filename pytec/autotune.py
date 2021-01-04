@@ -10,20 +10,6 @@ from enum import Enum
 # Which is in turn based on a fork of Arduino PID AutoTune Library
 # See https://github.com/t0mpr1c3/Arduino-PID-AutoTune-Library
 
-if __name__ == "__main__":
-    
-    # Auto tune parameters
-    # Thermostat channel
-    channel = 0
-    # Target temperature of the autotune routine, celcius
-    target_temperature = 30
-    # Value by which output will be increased/decreased from zero, amps
-    output_step = 1
-    # Reference period for local minima/maxima, seconds
-    lookback = 3
-    # Determines by how much the input value must overshoot/undershoot the setpoint, celcius
-    noiseband = 1.5
-
 class PIDAutotuneState(Enum):
     STATE_OFF = 'off'
     STATE_RELAY_STEP_UP = 'relay step up'
@@ -258,7 +244,19 @@ class PIDAutotune():
         self._peak_timestamps.append(timestamp)
         self._state = PIDAutotuneState.STATE_RELAY_STEP_UP
 
-if __name__ == "__main__":
+def main():
+
+    # Auto tune parameters
+    # Thermostat channel
+    channel = 0
+    # Target temperature of the autotune routine, celcius
+    target_temperature = 30
+    # Value by which output will be increased/decreased from zero, amps
+    output_step = 1
+    # Reference period for local minima/maxima, seconds
+    lookback = 3
+    # Determines by how much the input value must overshoot/undershoot the setpoint, celcius
+    noiseband = 1.5
 
     # logging.basicConfig(level=logging.DEBUG)
 
@@ -287,3 +285,5 @@ if __name__ == "__main__":
             pass
 
     tec.set_param("pwm", channel, "i_set" , channel)
+
+if __name__ == "__main__": main()
