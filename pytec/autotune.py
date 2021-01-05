@@ -56,6 +56,19 @@ class PIDAutotune:
         self._Ku = 0
         self._Pu = 0
 
+    def init_tuner(self, timestamp):
+        self._peak_type = 0
+        self._peak_count = 0
+        self._output = 0
+        self._initial_output = 0
+        self._Ku = 0
+        self._Pu = 0
+        self._inputs.clear()
+        self._peaks.clear()
+        self._peak_timestamps.clear()
+        self._peak_timestamps.append(timestamp)
+        self._state = PIDAutotuneState.STATE_RELAY_STEP_UP
+
     def state(self):
         """Get the current state."""
         return self._state
@@ -96,7 +109,7 @@ class PIDAutotune:
         if (self._state == PIDAutotuneState.STATE_OFF
                 or self._state == PIDAutotuneState.STATE_SUCCEEDED
                 or self._state == PIDAutotuneState.STATE_FAILED):
-            self.init_tuner(input_val, now)
+            self.init_tuner(now)
 
         self._last_run_timestamp = now
 
@@ -216,19 +229,6 @@ class PIDAutotune:
 
             return True
         return False
-
-    def init_tuner(self, input_value, timestamp):
-        self._peak_type = 0
-        self._peak_count = 0
-        self._output = 0
-        self._initial_output = 0
-        self._Ku = 0
-        self._Pu = 0
-        self._inputs.clear()
-        self._peaks.clear()
-        self._peak_timestamps.clear()
-        self._peak_timestamps.append(timestamp)
-        self._state = PIDAutotuneState.STATE_RELAY_STEP_UP
 
 
 def main():
