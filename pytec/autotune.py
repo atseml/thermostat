@@ -248,7 +248,7 @@ def main():
 
         # Sometimes report_mode may yeild empty object
         except KeyError:
-            pass
+            continue
 
         temperature = ch['temperature']
 
