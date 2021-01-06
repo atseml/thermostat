@@ -10,7 +10,7 @@ To use the Python real-time plotting utility, run
 python pytec/plot.py
 ```
 
-![default view](/assets/default%20view.png)
+![default view](./assets/default%20view.png)
 
 ## Temperature Setpoints and Thermal Load
 
@@ -70,4 +70,4 @@ Multiple suggested sets of PID parameters based on different calculation rules a
 
 With a well designed and constructed setup, the PID parameters calculated by the auto tune utility can provide mK level control stability with no manual tweaking.
 
-![tec3pessen](/assets/tec3pessen.png)
+![tec3pessen](./assets/tec3pessen.png)
