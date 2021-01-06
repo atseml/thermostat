@@ -246,17 +246,18 @@ def main():
         try:
             ch = data[channel]
 
-            temperature = ch['temperature']
-
-            if (tuner.run(temperature, ch['time'])):
-                break
-
-            tuner_out = tuner.output()
-
-            tec.set_param("pwm", channel, "i_set", tuner_out)
-
+        # Sometimes report_mode may yeild empty object
         except KeyError:
             pass
+
+        temperature = ch['temperature']
+
+        if (tuner.run(temperature, ch['time'])):
+            break
+
+        tuner_out = tuner.output()
+
+        tec.set_param("pwm", channel, "i_set", tuner_out)
 
     tec.set_param("pwm", channel, "i_set", 0)
 
