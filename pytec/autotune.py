@@ -245,7 +245,7 @@ def main():
     for data in tec.report_mode():
         try:
             ch = data[channel]
-        # Sometimes report_mode may yeild empty object
+        # Workaround for report_mode may yeild empty object
         except KeyError:
             continue
 
