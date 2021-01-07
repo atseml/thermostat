@@ -1,5 +1,9 @@
 # PID Tuning
 
+## Note on hardware setup
+
+When using a TEC module with the Thermostat, the Thermostat expects the thermal load (where the thermistor is connected) to heat up when a positive current flow from the TEC + terminal, through the TEC, to the TEC - terminal, and vice versa.
+
 ## Real time plot
 
 When tuning Thermostat PID parameters, it is helpful to view the temperature, PID output and other data in the form of a real time graph.
