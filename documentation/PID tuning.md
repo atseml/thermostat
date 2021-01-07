@@ -2,7 +2,11 @@
 
 ## Note on hardware setup
 
-When using a TEC module with the Thermostat, the Thermostat expects the thermal load (where the thermistor is connected) to heat up when a positive current flow from the TEC + terminal, through the TEC, to the TEC - terminal, and vice versa.
+When using a TEC module with the Thermostat, the Thermostat expects the thermal load (where the thermistor is connected) to heat up when a positive current flow from the TEC + terminal, through the TEC, to the TEC - terminal, and cool down when the current flows in the reverse direction.
+
+The heat sinking side of the TEC module should be thermally bonded to a large heat-sinking thermal mass to ensure maximum temperature stability, a large optical table had provided good results in tests.
+
+The thermal load under control should be well insulated from the surrounding for maximum stability, closed cell foam had been tested showing good results.
 
 ## Real time plot
 
