@@ -36,9 +36,9 @@ Below are some general guidelines for manually tuning PID loops. Note that every
 
 1. To start the manual tuning process, set the kp, ki and kd parameters to 0.
 
-2. Begin by increasing kP until the temperature begins to oscillate. Offset between the target temperature and the actual temperature can be ignored for now.
+2. Begin by increasing kp until the temperature begins to oscillate. Offset between the target temperature and the actual temperature can be ignored for now.
 
-3. Reduce kP by 30%, increase ki until the offset between target and actual temperature is eliminated.
+3. Reduce kp by 30%, increase ki until the offset between target and actual temperature is eliminated.
 
 4. Increase kd until the maximum allowable amount of overshoot is observed.
 
@@ -60,11 +60,11 @@ After some time, the auto tuning utility will output the auto tuning results, be
 Ku: 0.7553203471147422
 Pu: 75.93899999999977
 rule: ziegler-nichols
-Kp: 0.45319220826884526
+kp: 0.45319220826884526
 Ki: 0.011935690706194357
 Kd: 4.301870387965967
 rule: tyreus-luyben
-Kp: 0.3432930977636503
+kp: 0.3432930977636503
 Ki: 0.0020549280832497956
 Kd: 4.137825730504864
         .
