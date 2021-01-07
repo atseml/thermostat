@@ -255,4 +255,4 @@ with the following keys.
 
 ## PID Tuning
 
-The thermostat implements a PID control loop for each of the TEC channels, more details on setting up the PID control loop can be found [here](./documentation/PID%20tuning.md).
+The thermostat implements a PID control loop for each of the TEC channels, more details on setting up the PID control loop can be found [here](./doc/PID%20tuning.md).
