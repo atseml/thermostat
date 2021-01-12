@@ -13,7 +13,7 @@ use log::{error, info, warn};
 
 use core::fmt::Write;
 use cortex_m::asm::wfi;
-use cortex_m_rt::{entry, pre_init};
+use cortex_m_rt::{entry};
 use stm32f4xx_hal::{
     hal::watchdog::{WatchdogEnable, Watchdog},
     rcc::RccExt,
@@ -66,6 +66,7 @@ mod channel_state;
 mod config;
 use config::ChannelConfig;
 mod flash_store;
+mod dfu;
 
 const HSE: MegaHertz = MegaHertz(8);
 #[cfg(not(feature = "semihosting"))]
@@ -76,9 +77,6 @@ const WATCHDOG_INTERVAL: u32 = 30_000;
 const CHANNEL_CONFIG_KEY: [&str; 2] = ["ch0", "ch1"];
 
 const TCP_PORT: u16 = 23;
-
-const DFU_MSG_ADDR: usize = 0x2001BC00;
-const DFU_TRIG_MSG: usize = 0xDECAFBAD;
 
 fn send_line(socket: &mut TcpSocket, data: &[u8]) -> bool {
     let send_free = socket.send_capacity() - socket.send_queue();
@@ -430,12 +428,9 @@ fn main() -> ! {
                                     for i in 0..CHANNELS {
                                         channels.power_down(i);
                                     }
-
                                     unsafe {
-                                        let dfu_msg_addr = DFU_MSG_ADDR as *mut usize;
-                                        *dfu_msg_addr = DFU_TRIG_MSG;
+                                        dfu::trig_dfu();
                                     }
-
                                     SCB::sys_reset();
                                 }
                             }
@@ -488,36 +483,36 @@ fn main() -> ! {
     unreachable!()
 }
 
-#[pre_init]
-#[no_mangle]
-unsafe fn __pre_init() {
+// #[pre_init]
+// #[no_mangle]
+// unsafe fn __pre_init() {
 
-    let dfu_msg_addr = DFU_MSG_ADDR as *mut usize;
+//     let dfu_msg_addr = DFU_MSG_ADDR as *mut usize;
     
-    if *dfu_msg_addr == DFU_TRIG_MSG{
+//     if *dfu_msg_addr == DFU_TRIG_MSG{
 
-        *dfu_msg_addr = 0x00000000;
+//         *dfu_msg_addr = 0x00000000;
 
-        const RCC_APB2ENR: *mut u32 = 0xE000_ED88 as *mut u32;
-        const RCC_APB2ENR_ENABLE_SYSCFG_CLOCK: u32 = 0x00004000;
+//         const RCC_APB2ENR: *mut u32 = 0xE000_ED88 as *mut u32;
+//         const RCC_APB2ENR_ENABLE_SYSCFG_CLOCK: u32 = 0x00004000;
 
-        core::ptr::write_volatile(
-            RCC_APB2ENR,
-            *RCC_APB2ENR | RCC_APB2ENR_ENABLE_SYSCFG_CLOCK,
-        );
+//         core::ptr::write_volatile(
+//             RCC_APB2ENR,
+//             *RCC_APB2ENR | RCC_APB2ENR_ENABLE_SYSCFG_CLOCK,
+//         );
 
-        const SYSCFG_MEMRMP: *mut u32 = 0x40013800 as *mut u32;
-        const SYSCFG_MEMRMP_MAP_ROM: u32 = 0x00000001;
+//         const SYSCFG_MEMRMP: *mut u32 = 0x40013800 as *mut u32;
+//         const SYSCFG_MEMRMP_MAP_ROM: u32 = 0x00000001;
 
-        core::ptr::write_volatile(
-            SYSCFG_MEMRMP,
-            *SYSCFG_MEMRMP | SYSCFG_MEMRMP_MAP_ROM,
-        );
+//         core::ptr::write_volatile(
+//             SYSCFG_MEMRMP,
+//             *SYSCFG_MEMRMP | SYSCFG_MEMRMP_MAP_ROM,
+//         );
 
-        asm!("LDR R0, =0x1FFF0000");
-        asm!("LDR SP,[R0, #0]");
-        asm!("LDR R0,[R0, #4]");
-        asm!("BX R0");
-    }
+//         asm!("LDR R0, =0x1FFF0000");
+//         asm!("LDR SP,[R0, #0]");
+//         asm!("LDR R0,[R0, #4]");
+//         asm!("BX R0");
+//     }
 
-}
+// }
