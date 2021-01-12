@@ -3,10 +3,10 @@ use cortex_m_rt::{pre_init};
 /// RAM location used to store DFU trigger message
 const DFU_MSG_ADDR: usize = 0x2001BC00;
 
-/// DFU trigger message 
+/// DFU trigger message
 const DFU_TRIG_MSG: usize = 0xDECAFBAD;
 
-/// Set DFU trigger message
+/// Set DFU trigger
 pub unsafe fn trig_dfu() {
     let dfu_msg_addr = DFU_MSG_ADDR as *mut usize;
     *dfu_msg_addr = DFU_TRIG_MSG;
