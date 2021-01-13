@@ -3,6 +3,7 @@ use cortex_m_rt::{pre_init};
 const DFU_TRIG_MSG: u32 = 0xDECAFBAD;
 
 extern "C" {
+    // This symbol comes from memory.x
     static mut _dfu_msg: u32;
 }
 
