@@ -20,17 +20,17 @@ pub struct FlashBackend {
     flash: FLASH,
 }
 
-unsafe fn get_offset() -> usize {
-    (&_config_start as *const usize as usize) - (&_flash_start as *const usize as usize)
+fn get_offset() -> usize {
+    unsafe {
+        (&_config_start as *const usize as usize) - (&_flash_start as *const usize as usize)
+    }    
 }
 
 impl StoreBackend for FlashBackend {
     type Data = [u8];
 
     fn data(&self) -> &Self::Data {
-        unsafe {
-            &self.flash.read()[get_offset()..(get_offset() + FLASH_SECTOR_SIZE)]
-        }
+        &self.flash.read()[get_offset()..(get_offset() + FLASH_SECTOR_SIZE)]
     }
 
     type Error = Error;
@@ -40,10 +40,8 @@ impl StoreBackend for FlashBackend {
     }
 
     fn program(&mut self, offset: usize, payload: &[u8]) -> Result<(), Self::Error> {
-        unsafe {
-            self.flash.unlocked()
-                .program(get_offset() + offset, payload.iter().cloned())
-        }
+        self.flash.unlocked()
+            .program(get_offset() + offset, payload.iter().cloned())
     }
 
     fn backup_space(&self) -> &'static mut [u8] {
