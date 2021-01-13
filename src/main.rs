@@ -431,7 +431,7 @@ fn main() -> ! {
                                     unsafe {
                                         dfu::set_dfu_trigger();
                                     }
-                                    socket.close();
+                                    
                                     SCB::sys_reset();
                                 }
                             }

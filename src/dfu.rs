@@ -2,10 +2,11 @@ use cortex_m_rt::{pre_init};
 
 const DFU_TRIG_MSG: u32 = 0xDECAFBAD;
 
+extern "C" {
+    static mut _dfu_msg: u32;
+}
+
 pub unsafe fn set_dfu_trigger() {
-    extern "C" {
-        static mut _dfu_msg: u32;
-    }
     _dfu_msg = DFU_TRIG_MSG;
 }
 
@@ -14,10 +15,6 @@ pub unsafe fn set_dfu_trigger() {
 /// bootloader expects MCU to be in reset state when called.
 #[pre_init]
 unsafe fn __pre_init() {
-    extern "C" {
-        static mut _dfu_msg: u32;
-    }
-
     if _dfu_msg == DFU_TRIG_MSG {
         _dfu_msg = 0x00000000;
 
