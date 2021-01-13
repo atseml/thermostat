@@ -11,6 +11,7 @@ pub const FLASH_SECTOR: u8 = 12;
 static mut BACKUP_SPACE: [u8; FLASH_SECTOR_SIZE] = [0; FLASH_SECTOR_SIZE];
 
 extern "C" {
+    // These are from memory.x
     static _config_start: usize;
     static _flash_start: usize;
 }
@@ -24,7 +25,7 @@ unsafe fn get_offset() -> usize {
 }
 
 impl StoreBackend for FlashBackend {
-    type Data = [u8];    
+    type Data = [u8];
 
     fn data(&self) -> &Self::Data {
         unsafe {
