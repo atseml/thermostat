@@ -8,18 +8,37 @@ use sfkv::{Store, StoreBackend};
 /// 16 KiB
 pub const FLASH_SECTOR_SIZE: usize = 0x4000;
 pub const FLASH_SECTOR: u8 = 12;
-pub const FLASH_SECTOR_OFFSET: usize = 0x10_0000;
 static mut BACKUP_SPACE: [u8; FLASH_SECTOR_SIZE] = [0; FLASH_SECTOR_SIZE];
+
+extern "C" {
+    static _config_start: usize;
+    static _flash_start: usize;
+}
 
 pub struct FlashBackend {
     flash: FLASH,
 }
 
+unsafe fn get_offset() -> usize {
+    let config = core::mem::transmute::<*const usize, usize>(&_config_start);
+    let flash = core::mem::transmute::<*const usize, usize>(&_flash_start);
+    config - flash
+}
+
 impl StoreBackend for FlashBackend {
-    type Data = [u8];
+    type Data = [u8];    
 
     fn data(&self) -> &Self::Data {
-        &self.flash.read()[FLASH_SECTOR_OFFSET..(FLASH_SECTOR_OFFSET + FLASH_SECTOR_SIZE)]
+        unsafe {
+            // This works
+            // let config = core::mem::transmute::<*const usize, usize>(&_config_start);
+            // let flash = core::mem::transmute::<*const usize, usize>(&_flash_start);
+            // let config_offset = config - flash;
+
+            // This doesn't
+            // let config_offset = (&_config_start - &_flash_start) as usize;
+            &self.flash.read()[get_offset()..(get_offset() + FLASH_SECTOR_SIZE)]
+        }
     }
 
     type Error = Error;
@@ -29,10 +48,11 @@ impl StoreBackend for FlashBackend {
     }
 
     fn program(&mut self, offset: usize, payload: &[u8]) -> Result<(), Self::Error> {
-        self.flash.unlocked()
-            .program(FLASH_SECTOR_OFFSET + offset, payload.iter().cloned())
+        unsafe {
+            self.flash.unlocked()
+                .program(get_offset() + offset, payload.iter().cloned())
+        }
     }
-
 
     fn backup_space(&self) -> &'static mut [u8] {
         unsafe { &mut BACKUP_SPACE }
