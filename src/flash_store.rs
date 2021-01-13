@@ -20,9 +20,7 @@ pub struct FlashBackend {
 }
 
 unsafe fn get_offset() -> usize {
-    let config = core::mem::transmute::<*const usize, usize>(&_config_start);
-    let flash = core::mem::transmute::<*const usize, usize>(&_flash_start);
-    config - flash
+    (&_config_start as *const usize as usize) - (&_flash_start as *const usize as usize)
 }
 
 impl StoreBackend for FlashBackend {
@@ -30,13 +28,6 @@ impl StoreBackend for FlashBackend {
 
     fn data(&self) -> &Self::Data {
         unsafe {
-            // This works
-            // let config = core::mem::transmute::<*const usize, usize>(&_config_start);
-            // let flash = core::mem::transmute::<*const usize, usize>(&_flash_start);
-            // let config_offset = config - flash;
-
-            // This doesn't
-            // let config_offset = (&_config_start - &_flash_start) as usize;
             &self.flash.read()[get_offset()..(get_offset() + FLASH_SECTOR_SIZE)]
         }
     }
