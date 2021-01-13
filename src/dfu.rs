@@ -1,28 +1,25 @@
 use cortex_m_rt::{pre_init};
 
-/// RAM location used to store DFU trigger message
-const DFU_MSG_ADDR: usize = 0x2001BC00;
+const DFU_TRIG_MSG: u32 = 0xDECAFBAD;
 
-/// DFU trigger message
-const DFU_TRIG_MSG: usize = 0xDECAFBAD;
-
-/// Set DFU trigger
-pub unsafe fn trig_dfu() {
-    let dfu_msg_addr = DFU_MSG_ADDR as *mut usize;
-    *dfu_msg_addr = DFU_TRIG_MSG;
+pub unsafe fn set_dfu_trigger() {
+    extern "C" {
+        static mut _dfu_msg: u32;
+    }
+    _dfu_msg = DFU_TRIG_MSG;
 }
 
-/// Called by reset handler in lib.rs immediately after reset, checks if booting into dfu is needed
+/// Called by reset handler in lib.rs immediately after reset.
+/// This function should not be called outside of reset handler as 
+/// bootloader expects MCU to be in reset state when called.
 #[pre_init]
 unsafe fn __pre_init() {
+    extern "C" {
+        static mut _dfu_msg: u32;
+    }
 
-    let dfu_msg_addr = DFU_MSG_ADDR as *mut usize;
-    
-    // Check DFU trigger message
-    if *dfu_msg_addr == DFU_TRIG_MSG{
-
-        // Reset message
-        *dfu_msg_addr = 0x00000000;
+    if _dfu_msg == DFU_TRIG_MSG {
+        _dfu_msg = 0x00000000;
 
         // Enable system config controller clock
         const RCC_APB2ENR: *mut u32 = 0xE000_ED88 as *mut u32;
@@ -41,14 +38,14 @@ unsafe fn __pre_init() {
             SYSCFG_MEMRMP,
             *SYSCFG_MEMRMP | SYSCFG_MEMRMP_MAP_ROM,
         );
-
-        // Set stack pointer to bootloader location
-        asm!("LDR R0, =0x1FFF0000");
-        asm!("LDR SP,[R0, #0]");
-
-        // Jump to bootloader
-        asm!("LDR R0,[R0, #4]");
-        asm!("BX R0");
+        
+        asm!(
+            // Set stack pointer to bootloader location
+            "LDR R0, =0x1FFF0000",
+            "LDR SP,[R0, #0]",
+            // Jump to bootloader
+            "LDR R0,[R0, #4]",
+            "BX R0",
+        );
     }
-
 }

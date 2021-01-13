@@ -429,8 +429,9 @@ fn main() -> ! {
                                         channels.power_down(i);
                                     }
                                     unsafe {
-                                        dfu::trig_dfu();
+                                        dfu::set_dfu_trigger();
                                     }
+                                    socket.close();
                                     SCB::sys_reset();
                                 }
                             }
