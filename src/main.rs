@@ -202,6 +202,7 @@ fn main() -> ! {
                         warn!("poll: {:?}", e);
                     });
 
+                let mut reset_flag = false;
                 // TCP protocol handling
                 server.for_each(|mut socket, session| {
                     if ! socket.is_active() {
@@ -421,8 +422,8 @@ fn main() -> ! {
                                     for i in 0..CHANNELS {
                                         channels.power_down(i);
                                     }
-
-                                    SCB::sys_reset();
+                                    reset_flag = true;
+                                    // SCB::sys_reset();
                                 }
                                 Command::Dfu => {
                                     for i in 0..CHANNELS {
@@ -431,8 +432,8 @@ fn main() -> ! {
                                     unsafe {
                                         dfu::set_dfu_trigger();
                                     }
-                                    
-                                    SCB::sys_reset();
+                                    reset_flag = true;
+                                    // SCB::sys_reset();
                                 }
                             }
                             Ok(SessionInput::Error(e)) => {
@@ -457,6 +458,13 @@ fn main() -> ! {
                         }
                     }
                 });
+
+                if reset_flag == true {
+                    server.for_each(|mut socket, _| {
+                        socket.close();
+                    });
+                    SCB::sys_reset();
+                }
 
                 // Apply new IPv4 address/gateway
                 new_ipv4_config.take()
