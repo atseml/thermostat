@@ -203,8 +203,8 @@ fn main() -> ! {
                         warn!("poll: {:?}", e);
                     });
 
-                // TCP protocol handling
                 if ! should_reset {
+                    // TCP protocol handling
                     server.for_each(|mut socket, session| {
                         if ! socket.is_active() {
                             let _ = socket.listen(TCP_PORT);
@@ -424,7 +424,6 @@ fn main() -> ! {
                                             channels.power_down(i);
                                         }
                                         should_reset = true;
-                                        // SCB::sys_reset();
                                     }
                                     Command::Dfu => {
                                         for i in 0..CHANNELS {
@@ -434,7 +433,6 @@ fn main() -> ! {
                                             dfu::set_dfu_trigger();
                                         }
                                         should_reset = true;
-                                        // SCB::sys_reset();
                                     }
                                 }
                                 Ok(SessionInput::Error(e)) => {
