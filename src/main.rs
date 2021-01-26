@@ -459,16 +459,16 @@ fn main() -> ! {
                     });
                 } else {
                     // Should reset, close all TCP sockets.
-                    let mut sockets_active = 0;
+                    let mut any_socket_alive = false;
                     server.for_each(|mut socket, _| {                        
                         if socket.is_active() {
                             socket.abort();
-                            sockets_active += 1;
+                            any_socket_alive = true;
                         }
                     });
                     // Must let loop run one more cycle to poll server in order for RST to be sent,
                     // this makes sure system does not reset right after socket.abort() is called.
-                    if sockets_active == 0 {
+                    if !any_socket_alive {
                         SCB::sys_reset();
                     }  
                 }
