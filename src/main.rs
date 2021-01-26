@@ -466,7 +466,7 @@ fn main() -> ! {
                             any_socket_alive = true;
                         }
                     });
-                    // Must let loop run one more cycle to poll server in order for RST to be sent,
+                    // Must let loop run for one more cycle to poll server for RST to be sent,
                     // this makes sure system does not reset right after socket.abort() is called.
                     if !any_socket_alive {
                         SCB::sys_reset();
