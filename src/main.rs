@@ -213,9 +213,10 @@ fn main() -> ! {
                             socket.close()
                         } else if socket.can_send() && socket.can_recv() {
                             match socket.recv(|buf| session.feed(buf)) {
-                                Ok(SessionInput::Nothing) => {
-                                    send_line(&mut socket, b"{}");
-                                }
+                                // SessionInput::Nothing happens when socket RX ring buffer wraps around without
+                                // the line reader reading a newline character, should do nothing and let
+                                // the line reader read from the start of ring buffer in the next loop cycle.
+                                Ok(SessionInput::Nothing) => {}
                                 Ok(SessionInput::Command(command)) => match command {
                                     Command::Quit =>
                                         socket.close(),
