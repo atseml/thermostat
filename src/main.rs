@@ -213,9 +213,10 @@ fn main() -> ! {
                             socket.close()
                         } else if socket.can_send() && socket.can_recv() {
                             match socket.recv(|buf| session.feed(buf)) {
-                                // SessionInput::Nothing happens when socket RX ring buffer wraps around without
-                                // the line reader reading a newline character, should do nothing and let
-                                // the line reader read from the start of ring buffer in the next loop cycle.
+                                // SessionInput::Nothing happens when the line reader parses a string of characters that is not
+                                // followed by a newline character. Could be due to partial commands not terminated with newline,
+                                // socket RX ring buffer wraps around, or when the command is sent as seperate TCP packets etc.
+                                // Do nothing and feed more data to the line reader in the next loop cycle.
                                 Ok(SessionInput::Nothing) => {}
                                 Ok(SessionInput::Command(command)) => match command {
                                     Command::Quit =>
