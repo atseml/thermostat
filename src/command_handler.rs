@@ -1,14 +1,30 @@
-use crate::{CHANNEL_CONFIG_KEY, ad7172, channels::{self, CHANNELS}, command_parser::{CenterPoint, PidParameter, PwmPin, ShParameter}, config::ChannelConfig, dfu, flash_store::{FlashStore}, session::Session};
-use channels::Channels;
 use smoltcp::socket::TcpSocket;
 use log::{error, warn};
 use core::fmt::Write;
-use crate::net;
-use crate::command_parser;
-use command_parser::Ipv4Config;
-use command_parser::Command;
-use command_parser::ShowCommand;
-use crate::leds::Leds;
+use super::{
+    net,
+    command_parser::{
+        Ipv4Config, 
+        Command, 
+        ShowCommand, 
+        CenterPoint, 
+        PidParameter, 
+        PwmPin, 
+        ShParameter
+    },
+    leds::Leds,
+    ad7172,
+    CHANNEL_CONFIG_KEY,
+    channels::{
+        Channels, 
+        CHANNELS
+    },
+    config::ChannelConfig,
+    dfu,
+    flash_store::FlashStore,
+    session::Session
+};
+
 use uom::{
     si::{
         f64::{
@@ -149,14 +165,14 @@ impl Handler {
         Ok(Handler::Handled)
     }
 
-    fn engage_pid (channels: &mut Channels, channel: usize, socket: &mut TcpSocket, leds: &mut Leds) -> Result<Handler, Error> {
+    fn engage_pid (socket: &mut TcpSocket, channels: &mut Channels, leds: &mut Leds, channel: usize) -> Result<Handler, Error> {
         channels.channel_state(channel).pid_engaged = true;
         leds.g3.on();
         send_line(socket, b"{}");
         Ok(Handler::Handled)
     }
 
-    fn set_pwm (channels: &mut Channels, channel: usize, pin: PwmPin, value: f64, socket: &mut TcpSocket, leds: &mut Leds) -> Result<Handler, Error> {
+    fn set_pwm (socket: &mut TcpSocket, channels: &mut Channels, leds: &mut Leds, channel: usize, pin: PwmPin, value: f64) -> Result<Handler, Error> {
         match pin {
             PwmPin::ISet => {
                 channels.channel_state(channel).pid_engaged = false;
@@ -182,7 +198,7 @@ impl Handler {
         Ok(Handler::Handled)
     }
 
-    fn set_center_point(channels: &mut Channels, socket: &mut TcpSocket, channel: usize, center: CenterPoint) -> Result<Handler, Error> {
+    fn set_center_point(socket: &mut TcpSocket, channels: &mut Channels, channel: usize, center: CenterPoint) -> Result<Handler, Error> {
         let i_tec = channels.get_i(channel);
         let state = channels.channel_state(channel);
         state.center = center;
@@ -193,9 +209,9 @@ impl Handler {
         Ok(Handler::Handled)
     }
 
-    fn set_pid (channels: &mut Channels, socket: &mut TcpSocket, channel: usize, parameter: PidParameter, value: f64) -> Result<Handler, Error> {
+    fn set_pid (socket: &mut TcpSocket, channels: &mut Channels, channel: usize, parameter: PidParameter, value: f64) -> Result<Handler, Error> {
         let pid = &mut channels.channel_state(channel).pid;
-        use command_parser::PidParameter::*;
+        use super::command_parser::PidParameter::*;
         match parameter {
             Target =>
                 pid.target = value,
@@ -218,9 +234,9 @@ impl Handler {
         Ok(Handler::Handled)
     }
 
-    fn set_steinhart_hart (channels: &mut Channels, socket: &mut TcpSocket, channel: usize, parameter: ShParameter, value: f64) -> Result<Handler, Error> {
+    fn set_steinhart_hart (socket: &mut TcpSocket, channels: &mut Channels, channel: usize, parameter: ShParameter, value: f64) -> Result<Handler, Error> {
         let sh = &mut channels.channel_state(channel).sh;
-        use command_parser::ShParameter::*;
+        use super::command_parser::ShParameter::*;
         match parameter {
             T0 => sh.t0 = ThermodynamicTemperature::new::<degree_celsius>(value),
             B => sh.b = value,
@@ -230,13 +246,13 @@ impl Handler {
         Ok(Handler::Handled)
     }
 
-    fn reset_post_filter (channels: &mut Channels, socket: &mut TcpSocket, channel: usize) -> Result<Handler, Error> {
+    fn reset_post_filter (socket: &mut TcpSocket, channels: &mut Channels, channel: usize) -> Result<Handler, Error> {
         channels.adc.set_postfilter(channel as u8, None).unwrap();
         send_line(socket, b"{}");
         Ok(Handler::Handled)
     }
 
-    fn set_post_filter (channels: &mut Channels, socket: &mut TcpSocket, channel: usize, rate: f32) -> Result<Handler, Error> {
+    fn set_post_filter (socket: &mut TcpSocket, channels: &mut Channels, channel: usize, rate: f32) -> Result<Handler, Error> {
         let filter = ad7172::PostFilter::closest(rate);
         match filter {
             Some(filter) => {
@@ -251,7 +267,7 @@ impl Handler {
         Ok(Handler::Handled)
     }
 
-    fn load_channel (channels: &mut Channels, channel: Option<usize>, socket: &mut TcpSocket, store: &mut FlashStore) -> Result<Handler, Error> {
+    fn load_channel (socket: &mut TcpSocket, channels: &mut Channels, store: &mut FlashStore, channel: Option<usize>) -> Result<Handler, Error> {
         for c in 0..CHANNELS {
             if channel.is_none() || channel == Some(c) {
                 match store.read_value::<ChannelConfig>(CHANNEL_CONFIG_KEY[c]) {
@@ -273,7 +289,7 @@ impl Handler {
         Ok(Handler::Handled)
     }
 
-    fn save_channel (channels: &mut Channels, channel: Option<usize>, socket: &mut TcpSocket, store: &mut FlashStore) -> Result<Handler, Error> {
+    fn save_channel (socket: &mut TcpSocket, channels: &mut Channels, channel: Option<usize>, store: &mut FlashStore) -> Result<Handler, Error> {
         for c in 0..CHANNELS {
             let mut store_value_buf = [0u8; 256];
             if channel.is_none() || channel == Some(c) {
@@ -292,7 +308,7 @@ impl Handler {
         Ok(Handler::Handled)
     }
 
-    fn set_ipv4 (socket: &mut TcpSocket, config: Ipv4Config, store: &mut FlashStore) -> Result<Handler, Error> {
+    fn set_ipv4 (socket: &mut TcpSocket, store: &mut FlashStore, config: Ipv4Config) -> Result<Handler, Error> {
         let _ = store
             .write_value("ipv4", &config, [0; 16])
             .map_err(|e| error!("unable to save ipv4 config to flash: {:?}", e));
@@ -331,16 +347,16 @@ impl Handler {
             Command::Show(ShowCommand::SteinhartHart) => Handler::show_steinhart_hart(socket, channels),            
             Command::Show(ShowCommand::PostFilter) => Handler::show_post_filter(socket, channels),            
             Command::Show(ShowCommand::Ipv4) => Handler::show_ipv4(socket, ipv4_config),
-            Command::PwmPid { channel } => Handler::engage_pid(channels, channel, socket, leds),
-            Command::Pwm { channel, pin, value } => Handler::set_pwm(channels, channel, pin, value, socket, leds),
-            Command::CenterPoint { channel, center } => Handler::set_center_point(channels, socket, channel, center),
-            Command::Pid { channel, parameter, value } => Handler::set_pid(channels, socket, channel, parameter, value),
-            Command::SteinhartHart { channel, parameter, value } => Handler::set_steinhart_hart(channels, socket, channel, parameter, value),
-            Command::PostFilter { channel, rate: None } => Handler::reset_post_filter(channels, socket, channel),
-            Command::PostFilter { channel, rate: Some(rate) } => Handler::set_post_filter(channels, socket, channel, rate),
-            Command::Load { channel } => Handler::load_channel(channels, channel, socket, store),
-            Command::Save { channel } => Handler::save_channel(channels, channel, socket, store),
-            Command::Ipv4(config) => Handler::set_ipv4(socket, config, store),
+            Command::PwmPid { channel } => Handler::engage_pid(socket, channels, leds, channel),
+            Command::Pwm { channel, pin, value } => Handler::set_pwm(socket, channels, leds, channel, pin, value),
+            Command::CenterPoint { channel, center } => Handler::set_center_point(socket, channels, channel, center),
+            Command::Pid { channel, parameter, value } => Handler::set_pid(socket, channels, channel, parameter, value),
+            Command::SteinhartHart { channel, parameter, value } => Handler::set_steinhart_hart(socket, channels, channel, parameter, value),
+            Command::PostFilter { channel, rate: None } => Handler::reset_post_filter(socket, channels, channel),
+            Command::PostFilter { channel, rate: Some(rate) } => Handler::set_post_filter(socket, channels, channel, rate),
+            Command::Load { channel } => Handler::load_channel(socket, channels, store, channel),
+            Command::Save { channel } => Handler::save_channel(socket, channels, channel, store),
+            Command::Ipv4(config) => Handler::set_ipv4(socket, store, config),
             Command::Reset => Handler::reset(channels),
             Command::Dfu => Handler::dfu(channels)
         }
