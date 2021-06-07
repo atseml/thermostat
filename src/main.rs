@@ -4,7 +4,6 @@
 #![cfg_attr(test, allow(unused))]
 // TODO: #![deny(warnings, unused)]
 
-// use Handler::NewIPV4;
 #[cfg(not(any(feature = "semihosting", test)))]
 use panic_abort as _;
 #[cfg(all(feature = "semihosting", not(test)))]
@@ -12,7 +11,6 @@ use panic_semihosting as _;
 
 use log::{error, info, warn};
 
-// use core::fmt::Write;
 use cortex_m::asm::wfi;
 use cortex_m_rt::entry;
 use stm32f4xx_hal::{
@@ -209,10 +207,8 @@ fn main() -> ! {
                                 Ok(SessionInput::Nothing) => {}
                                 Ok(SessionInput::Command(command)) => {
                                     match Handler::handle_command(command, &mut socket, &mut channels, session, &mut leds, &mut store, &mut ipv4_config) {
-                                        Ok(Handler::NewIPV4(ip)) => {
-                                            new_ipv4_config = Some(ip);
-                                        }
-                                        Ok(Handler::Handled) => {}
+                                        Ok(Handler::NewIPV4(ip)) => new_ipv4_config = Some(ip),                                
+                                        Ok(Handler::Handled) => {},
                                         Ok(Handler::CloseSocket) => socket.close(),
                                         Ok(Handler::Reset) => should_reset = true,
                                         Err(_) => {},

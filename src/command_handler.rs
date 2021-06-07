@@ -50,7 +50,9 @@ pub enum Handler {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Error {
-    
+    ReportError,
+    PostFilterRateError,
+    FlashError
 }
 
 fn send_line(socket: &mut TcpSocket, data: &[u8]) -> bool {
@@ -99,7 +101,7 @@ impl Handler {
             Err(e) => {
                 error!("unable to serialize report: {:?}", e);
                 let _ = writeln!(socket, "{{\"error\":\"{:?}\"}}", e);
-
+                return Err(Error::ReportError);
             }
         }
         Ok(Handler::Handled)
@@ -113,6 +115,7 @@ impl Handler {
             Err(e) => {
                 error!("unable to serialize pid summary: {:?}", e);
                 let _ = writeln!(socket, "{{\"error\":\"{:?}\"}}", e);
+                return Err(Error::ReportError);
             }
         }
         Ok(Handler::Handled)
@@ -126,6 +129,7 @@ impl Handler {
             Err(e) => {
                 error!("unable to serialize pwm summary: {:?}", e);
                 let _ = writeln!(socket, "{{\"error\":\"{:?}\"}}", e);
+                return Err(Error::ReportError);
             }
         }
         Ok(Handler::Handled)
@@ -139,6 +143,7 @@ impl Handler {
             Err(e) => {
                 error!("unable to serialize steinhart-hart summaries: {:?}", e);
                 let _ = writeln!(socket, "{{\"error\":\"{:?}\"}}", e);
+                return Err(Error::ReportError);
             }
         }
         Ok(Handler::Handled)
@@ -152,6 +157,7 @@ impl Handler {
             Err(e) => {
                 error!("unable to serialize postfilter summary: {:?}", e);
                 let _ = writeln!(socket, "{{\"error\":\"{:?}\"}}", e);
+                return Err(Error::ReportError);
             }
         }
         Ok(Handler::Handled)
@@ -262,6 +268,7 @@ impl Handler {
             None => {
                 error!("unable to choose postfilter for rate {:.3}", rate);
                 send_line(socket, b"{{\"error\": \"unable to choose postfilter rate\"}}");
+                return Err(Error::PostFilterRateError);
             }
         }
         Ok(Handler::Handled)
@@ -282,6 +289,7 @@ impl Handler {
                     Err(e) => {
                         error!("unable to load config from flash: {:?}", e);
                         let _ = writeln!(socket, "{{\"error\":\"{:?}\"}}", e);
+                        return Err(Error::FlashError);
                     }
                 }
             }
@@ -301,6 +309,7 @@ impl Handler {
                     Err(e) => {
                         error!("unable to save channel {} config to flash: {:?}", c, e);
                         let _ = writeln!(socket, "{{\"error\":\"{:?}\"}}", e);
+                        return Err(Error::FlashError);
                     }
                 }
             }
