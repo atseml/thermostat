@@ -27,45 +27,51 @@
                 rustc = rust;
                 cargo = rust;
             });
-            cargoSha256 = "0qb4s06jwgj3i9df6qq9gwcnyr3jq6dh4l5ygjghq5x1bmcqliix";
-            buildStm32Firmware = { name, src, cargoDepsName ? name, patchPhase ? "", extraNativeBuildInputs ? [], checkPhase ? "", doCheck ? true, binaryName ? name, extraCargoBuildArgs ? "" }:
-                rustPlatform.buildRustPackage rec {
-                    inherit name cargoDepsName;
-                    version = "0.0.0";
+            thermostat = rustPlatform.buildRustPackage rec {
+                name = "thermostat";
+                version = "0.0.0";
 
-                    inherit src;
-                    inherit cargoSha256;
-
-                    inherit patchPhase;
-                    nativeBuildInputs = [ pkgs.llvm ] ++ extraNativeBuildInputs;
-                    buildPhase = ''
-                    export CARGO_HOME=$(mktemp -d cargo-home.XXX)
-                    cargo build --release --bin ${binaryName} ${extraCargoBuildArgs}
-                    '';
-
-                    inherit checkPhase doCheck;
-                    # binaryName defaults to the `name` arg (i.e. the Rust package name);
-                    # it is used as the Cargo binary filename
-                    installPhase = ''
-                    mkdir -p $out $out/nix-support
-                    cp target/thumbv7em-none-eabihf/release/${binaryName} $out/${name}.elf
-                    echo file binary-dist $out/${name}.elf >> $out/nix-support/hydra-build-products
-                    llvm-objcopy -O binary target/thumbv7em-none-eabihf/release/${binaryName} $out/${name}.bin
-                    echo file binary-dist $out/${name}.bin >> $out/nix-support/hydra-build-products
-                    '';
-
-                    dontFixup = true;
+                src = self;
+                cargoLock = { 
+                    lockFile = ./Cargo.lock;
+                    outputHashes = {
+                        "stm32-eth-0.2.0" = "sha256-HXRr/NDhdIKqyjdA4D8ZmcO1dDpDawdlYPUOwcEbPQk=";
+                        "stm32f4xx-hal-0.8.3" = "sha256-MOv7tVtVMxr3IYMaN0Q8EQWxv3rubmCxjXMXuw/ZKAw=";
+                    };
                 };
-        in {
-            packages.x86_64-linux = rec {
-                thermostat = buildStm32Firmware {
-                    name = "thermostat";
-                    src = self;
-                    checkPhase = ''
-                        cargo test --target=${pkgs.rust.toRustTarget pkgs.stdenv.targetPlatform};
-                    '';
-                };
+
+                patchPhase = "";
+                nativeBuildInputs = [ pkgs.llvm ];
+                buildPhase = ''
+                export CARGO_HOME=$(mktemp -d cargo-home.XXX)
+                cargo build --release --bin thermostat
+                '';
+
+                checkPhase = ''
+                    cargo test --target=${pkgs.rust.toRustTarget pkgs.stdenv.targetPlatform};
+                '';
+
+                # binaryName defaults to the `name` arg (i.e. the Rust package name);
+                # it is used as the Cargo binary filename
+                installPhase = ''
+                mkdir -p $out $out/nix-support
+                cp target/thumbv7em-none-eabihf/release/thermostat $out/thermostat.elf
+                echo file binary-dist $out/thermostat.elf >> $out/nix-support/hydra-build-products
+                llvm-objcopy -O binary target/thumbv7em-none-eabihf/release/thermostat $out/thermostat.bin
+                echo file binary-dist $out/thermostat.bin >> $out/nix-support/hydra-build-products
+                '';
+
+                dontFixup = true;
             };
+        in rec {
+            packages.x86_64-linux = rec {
+                inherit thermostat;
+            };
+
+            hydraJobs = {
+                inherit (packages.x86_64-linux) thermostat;
+            };
+
             devShell.x86_64-linux = pkgs.mkShell {
                 name = "thermostat-dev-shell";
                 buildInputs = with pkgs; [
@@ -76,6 +82,6 @@
                         numpy matplotlib
                     ]);
             };
-            defaultPackage.x86_64-linux = pkgs.python3.withPackages(ps: [ ]);
+            defaultPackage.x86_64-linux = thermostat;
       };
 }
