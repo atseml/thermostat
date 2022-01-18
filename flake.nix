@@ -41,6 +41,7 @@
         };
 
         nativeBuildInputs = [ pkgs.llvm ];
+
         buildPhase = ''
           cargo build --release --bin thermostat
         '';
@@ -69,7 +70,7 @@
         buildInputs = with pkgs; [
           rustPlatform.rust.rustc
           rustPlatform.rust.cargo
-          gcc openocd dfu-util
+          openocd dfu-util
           ] ++ (with python3Packages; [
             numpy matplotlib
           ]);
