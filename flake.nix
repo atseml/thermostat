@@ -56,13 +56,13 @@
 
         dontFixup = true;
       };
-    in rec {
-      packages.x86_64-linux = rec {
+    in {
+      packages.x86_64-linux = {
         inherit thermostat;
       };
 
       hydraJobs = {
-        inherit (packages.x86_64-linux) thermostat;
+        inherit thermostat;
       };
 
       devShell.x86_64-linux = pkgs.mkShell {
