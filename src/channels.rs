@@ -437,9 +437,7 @@ impl Channels {
         let tec_i = self.get_tec_i(channel);
         let dac_value = self.get_dac(channel);
         let state = self.channel_state(channel);
-        let pid_output = state.pid.last_output.map(|last_output|
-            ElectricCurrent::new::<ampere>(last_output)
-        );
+        let pid_output = ElectricCurrent::new::<ampere>(state.pid.y1);
         Report {
             channel,
             time: state.get_adc_time(),
@@ -541,7 +539,7 @@ pub struct Report {
     i_tec: ElectricPotential,
     tec_i: ElectricCurrent,
     tec_u_meas: ElectricPotential,
-    pid_output: Option<ElectricCurrent>,
+    pid_output: ElectricCurrent,
 }
 
 pub struct CenterPointJson(CenterPoint);
