@@ -77,8 +77,8 @@ class PIDAutotune:
         """
         divisors = self._tuning_rules[tuning_rule]
         kp = self._Ku * divisors[0]
-        ki = divisors[1] * self._Ku / self._Pu
-        kd = divisors[2] * self._Ku * self._Pu
+        ki = divisors[1] * self._Ku / self._Pu / 0.12
+        kd = divisors[2] * self._Ku * self._Pu * 0.12
         return PIDAutotune.PIDParams(kp, ki, kd)
 
     def run(self, input_val, time_input):
