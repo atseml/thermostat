@@ -3,7 +3,6 @@ use uom::si::{
     f64::{
         ElectricPotential,
         ElectricalResistance,
-        ElectricCurrent,
         ThermodynamicTemperature,
         Time,
     },
