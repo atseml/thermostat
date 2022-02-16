@@ -1,10 +1,4 @@
 use serde::{Serialize, Deserialize};
-use uom::si::{
-    f64::{Time, ElectricCurrent},
-    time::second,
-    electric_current::ampere,
-};
-
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Parameters {
@@ -62,7 +56,7 @@ impl Controller {
     //       + x2 * kd
     //       + kp * (u0 - u1)
     // y0  = clip(y0', ymin, ymax)
-    pub fn update(&mut self, input: f64, time_delta: Time, current: ElectricCurrent) -> f64 {
+    pub fn update(&mut self, input: f64) -> f64 {
         
         let mut output: f64 = self.y1 - self.target * f64::from(self.parameters.ki)
                             + input * f64::from(self.parameters.kp + self.parameters.ki + self.parameters.kd)
@@ -140,7 +134,7 @@ mod test {
         while !values.iter().all(|value| target.contains(value)) && total_t < CYCLE_LIMIT {
             let next_t = (t + 1) % DELAY;
             // Feed the oldest temperature
-            output = pid.update(values[next_t], Time::new::<second>(1.0), ElectricCurrent::new::<ampere>(output));
+            output = pid.update(values[next_t]);
             // Overwrite oldest with previous temperature - output
             values[next_t] = values[t] - output - (values[t] - DEFAULT) * LOSS;
             t = next_t;
