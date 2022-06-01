@@ -71,7 +71,7 @@
           rustPlatform.rust.cargo
           openocd dfu-util
           ] ++ (with python3Packages; [
-            numpy matplotlib
+            numpy matplotlib pyqtgraph
           ]);
       };
       defaultPackage.x86_64-linux = thermostat;
