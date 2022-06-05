@@ -59,8 +59,8 @@ cw.setLayout(l)
 
 pg.setConfigOptions(antialias=True)
 
-ch0tempGraph = Graph(layout, 'Channel 0 Termperature', 1, 1, [Curves('Feedback', 'temperature', 0, 'r', rec_len, refresh_period)])
-ch1tempGraph = Graph(layout, 'Channel 1 Termperature', 2, 1, [Curves('Feedback', 'temperature', 1, 'r', rec_len, refresh_period)])
+ch0tempGraph = Graph(layout, 'Channel 0 Temperature', 1, 1, [Curves('Feedback', 'temperature', 0, 'r', rec_len, refresh_period)])
+ch1tempGraph = Graph(layout, 'Channel 1 Temperature', 2, 1, [Curves('Feedback', 'temperature', 1, 'r', rec_len, refresh_period)])
 ch0currentGraph = Graph(layout, 'Channel 0 Current', 1, 2, [Curves('Feedback', 'tec_i', 0, 'r', rec_len, refresh_period),
                                                             Curves('Setpoint', 'i_set', 0, 'g', rec_len, refresh_period)])
 ch1currentGraph = Graph(layout, 'Channel 1 Current', 2, 2, [Curves('Feedback', 'tec_i', 1, 'r', rec_len, refresh_period),
