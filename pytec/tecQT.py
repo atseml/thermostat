@@ -37,29 +37,29 @@ TECparams = [ [
 
 
 GUIparams = [[
-    {'name': 'Enable Output', 'type': 'bool', 'value': False},
-    {'name': 'Enable Constant Current', 'type': 'bool', 'value': False, 'children': [
+    {'name': 'Disable Output', 'type': 'action', 'tip': 'Disable Output'},
+    {'name': 'Constant Current', 'type': 'bool', 'value': False, 'children': [
         {'name': 'Set Current', 'type': 'float', 'value': 0, 'step': 0.1, 'siPrefix': True, 'suffix': 'A'},
     ]},    
-    {'name': 'Enable PID', 'type': 'bool', 'value': False, 'children': [
+    {'name': 'Temperature PID', 'type': 'bool', 'value': False, 'children': [
         {'name': 'Set Temperature', 'type': 'float', 'value': 25, 'step': 0.1, 'siPrefix': True, 'suffix': 'C'},
     ]},    
-    {'name': 'Output Config', 'type': 'group', 'children': [
+    {'name': 'Output Config', 'expanded': False, 'type': 'group', 'children': [
         {'name': 'Max Current', 'type': 'float', 'value': 0, 'step': 0.1, 'siPrefix': True, 'suffix': 'A'},
         {'name': 'Max Voltage', 'type': 'float', 'value': 0, 'step': 0.1, 'siPrefix': True, 'suffix': 'V'},
     ]},
-    {'name': 'Thermistor Config', 'type': 'group', 'children': [
+    {'name': 'Thermistor Config', 'expanded': False,  'type': 'group', 'children': [
         {'name': 'T0', 'type': 'float', 'value': 25, 'step': 0.1, 'siPrefix': True, 'suffix': 'C'},
         {'name': 'R0', 'type': 'float', 'value': 10000, 'step': 1, 'siPrefix': True, 'suffix': 'Ohm'},
         {'name': 'Beta', 'type': 'float', 'value': 3950, 'step': 1},
     ]},
-    {'name': 'PID Config', 'type': 'group', 'children': [
+    {'name': 'PID Config', 'expanded': False,  'type': 'group', 'children': [
         {'name': 'kP', 'type': 'float', 'value': 0, 'step': 0.1},
         {'name': 'kI', 'type': 'float', 'value': 0, 'step': 0.1},
         {'name': 'kD', 'type': 'float', 'value': 0, 'step': 0.1},
     ]},
     {'name': 'Save', 'type': 'action', 'tip': 'Save'},
-] for ch in range(2)]
+] for _ in range(2)]
 
 ## If anything changes in the tree, print a message
 def change(param, changes):
@@ -134,7 +134,23 @@ def TECsync():
             if parents['tag'] == 'PIDtarget':
                 for children in parents['children']:
                     children['value'] = tec.get_pid()[channel]['target']
-
+    
+def refreshTreeParam(tempTree:dict, channel:int) -> dict:
+    print(tempTree)
+    print(type(tempTree))
+    tempTree['children']['Constant Current']['value'] = not TECparams[channel][0]['children'][0]['value']
+    tempTree['children']['Constant Current']['children']['Set Current']['value'] = TECparams[channel][1]['children'][3]['value']
+    tempTree['children']['Temperature PID']['value'] = TECparams[channel][0]['children'][0]['value']
+    tempTree['children']['Temperature PID']['children']['Set Temperature']['value'] = TECparams[channel][4]['children'][0]['value']
+    tempTree['children']['Output Config']['children']['Max Current']['value'] = TECparams[channel][1]['children'][0]['value']
+    tempTree['children']['Output Config']['children']['Max Voltage']['value'] = TECparams[channel][1]['children'][2]['value']
+    tempTree['children']['Thermistor Config']['children']['T0']['value'] = TECparams[channel][3]['children'][0]['value'] - 273.15
+    tempTree['children']['Thermistor Config']['children']['R0']['value'] = TECparams[channel][3]['children'][1]['value']
+    tempTree['children']['Thermistor Config']['children']['Beta']['value'] = TECparams[channel][3]['children'][2]['value']
+    tempTree['children']['PID Config']['children']['kP']['value'] = TECparams[channel][2]['children'][0]['value']
+    tempTree['children']['PID Config']['children']['kI']['value'] = TECparams[channel][2]['children'][1]['value']
+    tempTree['children']['PID Config']['children']['kD']['value'] = TECparams[channel][2]['children'][2]['value']
+    return tempTree
 
 cnt = 0
 def updateData():
@@ -150,10 +166,9 @@ def updateData():
             break
     cnt += 1    
     
-    
+
 if __name__ == '__main__':
     tec = Client(host="192.168.1.26", port=23, timeout=None)
-    TECsync()
 
     app = pg.mkQApp()
     pg.setConfigOptions(antialias=True)
@@ -177,6 +192,10 @@ if __name__ == '__main__':
     paramList1.sigTreeStateChanged.connect(change)
     ch1Tree = ParameterTree()
     ch1Tree.setParameters(paramList1, showTop=False)
+
+    TECsync()
+    paramList0.restoreState(refreshTreeParam(paramList0.saveState(), 0))
+    paramList1.restoreState(refreshTreeParam(paramList1.saveState(), 1))
 
     layout.addWidget(ch0Tree, 1, 1, 1, 1)
     layout.addWidget(ch1Tree, 2, 1, 1, 1)
