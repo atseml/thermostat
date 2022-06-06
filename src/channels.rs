@@ -113,7 +113,12 @@ impl Channels {
     }
 
     pub fn get_i(&mut self, channel: usize) -> ElectricCurrent {
-        let center_point = self.get_center(channel);
+        let center_point = match channel.into() {
+            0 => self.channel0.vref_meas,
+            1 => self.channel1.vref_meas,
+            _ => unreachable!(),
+        };
+        // let center_point = self.get_center(channel);
         let r_sense = ElectricalResistance::new::<ohm>(R_SENSE);
         let voltage = self.get_dac(channel);
         let i_tec = (voltage - center_point) / (10.0 * r_sense);

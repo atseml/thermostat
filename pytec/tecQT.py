@@ -39,17 +39,17 @@ TECparams = [ [
 GUIparams = [[
     {'name': 'Disable Output', 'type': 'action', 'tip': 'Disable Output'},
     {'name': 'Constant Current', 'type': 'group', 'children': [
-        {'name': 'Set Current', 'type': 'float', 'value': 0, 'step': 0.1, 'siPrefix': True, 'suffix': 'A'},
+        {'name': 'Set Current', 'type': 'float', 'value': 0, 'step': 0.1, 'limits': (-3, 3), 'siPrefix': True, 'suffix': 'A'},
     ]},    
     {'name': 'Temperature PID', 'type': 'bool', 'value': False, 'children': [
-        {'name': 'Set Temperature', 'type': 'float', 'value': 25, 'step': 0.1, 'siPrefix': True, 'suffix': 'C'},
+        {'name': 'Set Temperature', 'type': 'float', 'value': 25, 'step': 0.1, 'limits': (-273, 300), 'siPrefix': True, 'suffix': 'C'},
     ]},    
     {'name': 'Output Config', 'expanded': False, 'type': 'group', 'children': [
-        {'name': 'Max Current', 'type': 'float', 'value': 0, 'step': 0.1, 'siPrefix': True, 'suffix': 'A'},
-        {'name': 'Max Voltage', 'type': 'float', 'value': 0, 'step': 0.1, 'siPrefix': True, 'suffix': 'V'},
+        {'name': 'Max Current', 'type': 'float', 'value': 0, 'step': 0.1, 'limits': (0, 3), 'siPrefix': True, 'suffix': 'A'},
+        {'name': 'Max Voltage', 'type': 'float', 'value': 0, 'step': 0.1, 'limits': (0, 5), 'siPrefix': True, 'suffix': 'V'},
     ]},
     {'name': 'Thermistor Config', 'expanded': False,  'type': 'group', 'children': [
-        {'name': 'T0', 'type': 'float', 'value': 25, 'step': 0.1, 'siPrefix': True, 'suffix': 'C'},
+        {'name': 'T0', 'type': 'float', 'value': 25, 'step': 0.1, 'limits': (-100, 100), 'siPrefix': True, 'suffix': 'C'},
         {'name': 'R0', 'type': 'float', 'value': 10000, 'step': 1, 'siPrefix': True, 'suffix': 'Ohm'},
         {'name': 'Beta', 'type': 'float', 'value': 3950, 'step': 1},
     ]},
