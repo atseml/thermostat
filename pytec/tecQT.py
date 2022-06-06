@@ -4,6 +4,8 @@ from pyqtgraph.parametertree import Parameter, ParameterTree, ParameterItem, reg
 import numpy as np
 import pyqtgraph as pg
 from pytec.client import Client
+from enum import Enum
+from autotune import PIDAutotune, PIDAutotuneState
 
 rec_len = 1000
 refresh_period = 20
@@ -35,7 +37,6 @@ TECparams = [ [
     ]},
 ] for _ in range(2)]
 
-
 GUIparams = [[
     {'name': 'Disable Output', 'type': 'action', 'tip': 'Disable Output'},
     {'name': 'Constant Current', 'type': 'group', 'children': [
@@ -57,9 +58,17 @@ GUIparams = [[
         {'name': 'kP', 'type': 'float', 'value': 0, 'step': 0.1},
         {'name': 'kI', 'type': 'float', 'value': 0, 'step': 0.1},
         {'name': 'kD', 'type': 'float', 'value': 0, 'step': 0.1},
+        {'name': 'PID Auto Tune', 'expanded': False,  'type': 'group', 'children': [
+            {'name': 'Target Temperature', 'type': 'float', 'value': 20, 'step': 0.1, 'siPrefix': True, 'suffix': 'C'},
+            {'name': 'Test Current', 'type': 'float', 'value': 1, 'step': 0.1, 'siPrefix': True, 'suffix': 'A'},
+            {'name': 'Temperature Swing', 'type': 'float', 'value': 1.5, 'step': 0.1, 'siPrefix': True, 'suffix': 'C'},
+            {'name': 'Run', 'type': 'action', 'tip': 'Run'},
+        ]},
     ]},
-    {'name': 'Save', 'type': 'action', 'tip': 'Save'},
+    {'name': 'Save to flash', 'type': 'action', 'tip': 'Save to flash'},
 ] for _ in range(2)]
+
+autoTuneState = [PIDAutotuneState.STATE_OFF, 'idle']
 
 ## If anything changes in the tree, print a message
 def change(param, changes, ch):
@@ -120,7 +129,10 @@ def change(param, changes, ch):
         if (childName == 'PID Config.kD'):
             tec.set_param('pid', ch, 'kd', data)
 
-        if (childName == 'Save'):
+        if (childName == 'PID Config.PID Auto Tune.Run'):
+            autoTuneState[ch] = 'triggered'
+
+        if (childName == 'Save to flash'):
             tec.save_config()
         
 def change0(param, changes):
@@ -174,6 +186,7 @@ def TECsync():
                 for data in tec.report_mode():
                     for children in parents['children']:
                         children['value'] = data[channel][children['tag']]
+                        print(data[channel][children['tag']])
                     if quit:
                         break
             if parents['tag'] == 'pwm':
@@ -190,7 +203,6 @@ def TECsync():
                     children['value'] = tec.get_pid()[channel]['target']
     
 def refreshTreeParam(tempTree:dict, channel:int) -> dict:
-    # tempTree['children']['Constant Current']['value'] = not TECparams[channel][0]['children'][0]['value']
     tempTree['children']['Constant Current']['children']['Set Current']['value'] = TECparams[channel][1]['children'][3]['value']
     tempTree['children']['Temperature PID']['value'] = TECparams[channel][0]['children'][0]['value']
     tempTree['children']['Temperature PID']['children']['Set Temperature']['value'] = TECparams[channel][4]['children'][0]['value']
@@ -213,6 +225,11 @@ def updateData():
         ch1tempGraph.update(data, cnt)
         ch0currentGraph.update(data, cnt)
         ch1currentGraph.update(data, cnt)
+
+        for state in autoTuneState:
+            if state == 'triggered':
+                state = 'tuning'
+
                 
         if quit:
             break
@@ -238,18 +255,17 @@ if __name__ == '__main__':
     paramList = [Parameter.create(name='GUIparams', type='group', children=GUIparams[0]),
                  Parameter.create(name='GUIparams', type='group', children=GUIparams[1])]
 
-    paramList[0].sigTreeStateChanged.connect(change0)
-    print(paramList[0].children())
     ch0Tree = ParameterTree()
-    ch0Tree.setParameters(paramList[0], showTop=False)
-
-    paramList[1].sigTreeStateChanged.connect(change1)
+    ch0Tree.setParameters(paramList[0], showTop=False)    
     ch1Tree = ParameterTree()
     ch1Tree.setParameters(paramList[1], showTop=False)
 
     TECsync()
     paramList[0].restoreState(refreshTreeParam(paramList[0].saveState(), 0))
     paramList[1].restoreState(refreshTreeParam(paramList[1].saveState(), 1))
+
+    paramList[0].sigTreeStateChanged.connect(change0)
+    paramList[1].sigTreeStateChanged.connect(change1)
 
     layout.addWidget(ch0Tree, 1, 1, 1, 1)
     layout.addWidget(ch1Tree, 2, 1, 1, 1)
