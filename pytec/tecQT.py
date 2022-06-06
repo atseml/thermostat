@@ -38,7 +38,7 @@ TECparams = [ [
 
 GUIparams = [[
     {'name': 'Disable Output', 'type': 'action', 'tip': 'Disable Output'},
-    {'name': 'Constant Current', 'type': 'bool', 'value': False, 'children': [
+    {'name': 'Constant Current', 'type': 'group', 'children': [
         {'name': 'Set Current', 'type': 'float', 'value': 0, 'step': 0.1, 'siPrefix': True, 'suffix': 'A'},
     ]},    
     {'name': 'Temperature PID', 'type': 'bool', 'value': False, 'children': [
@@ -62,10 +62,10 @@ GUIparams = [[
 ] for _ in range(2)]
 
 ## If anything changes in the tree, print a message
-def change(param, changes):
+def change(param, changes, ch):
     print("tree changes:")
     for param, change, data in changes:
-        path = paramList0.childPath(param)
+        path = paramList[ch].childPath(param)
         if path is not None:
             childName = '.'.join(path)
         else:
@@ -74,6 +74,60 @@ def change(param, changes):
         print('  change:    %s'% change)
         print('  data:      %s'% str(data))
         print('  ----------')
+
+        if (childName == 'Disable Output'):
+            tec.set_param('pwm', ch, 'i_set', 0)
+            paramList[ch].child('Constant Current').child('Set Current').setValue(0) 
+            paramList[ch].child('Temperature PID').setValue(False)          
+
+        if (childName == 'Temperature PID'):
+            if (data):
+                tec.set_param("pwm", ch, "pid")
+            else:
+                tec.set_param('pwm', ch, 'i_set', paramList[ch].child('Constant Current').child('Set Current').value())  
+        
+        if (childName == 'Constant Current.Set Current'):
+            tec.set_param('pwm', ch, 'i_set', data)
+            paramList[ch].child('Temperature PID').setValue(False)  
+
+        if (childName == 'Temperature PID.Set Temperature'):
+            tec.set_param('pid', ch, 'target', data)
+
+        if (childName == 'Output Config.Max Current'):
+            tec.set_param('pwm', ch, 'max_i_pos', data)
+            tec.set_param('pwm', ch, 'max_i_neg', data)
+            tec.set_param('pid', ch, 'output_min', -data)
+            tec.set_param('pid', ch, 'output_max', data)
+
+        if (childName == 'Output Config.Max Voltage'):
+            tec.set_param('pwm', ch, 'max_v', data)
+
+        if (childName == 'Thermistor Config.T0'):
+            tec.set_param('s-h', ch, 't0', data)
+
+        if (childName == 'Thermistor Config.R0'):
+            tec.set_param('s-h', ch, 'r0', data)
+
+        if (childName == 'Thermistor Config.Beta'):
+            tec.set_param('s-h', ch, 'b', data)
+
+        if (childName == 'PID Config.kP'):
+            tec.set_param('pid', ch, 'kp', data)
+
+        if (childName == 'PID Config.kI'):
+            tec.set_param('pid', ch, 'ki', data)
+
+        if (childName == 'PID Config.kD'):
+            tec.set_param('pid', ch, 'kd', data)
+
+        if (childName == 'Save'):
+            tec.save_config()
+        
+def change0(param, changes):
+    change(param, changes, 0)
+
+def change1(param, changes):
+    change(param, changes, 1)
 
 class Curves:
     def __init__(self, legend: str, key: str, channel: int, color: str, buffer_len: int, period: int):
@@ -136,9 +190,7 @@ def TECsync():
                     children['value'] = tec.get_pid()[channel]['target']
     
 def refreshTreeParam(tempTree:dict, channel:int) -> dict:
-    print(tempTree)
-    print(type(tempTree))
-    tempTree['children']['Constant Current']['value'] = not TECparams[channel][0]['children'][0]['value']
+    # tempTree['children']['Constant Current']['value'] = not TECparams[channel][0]['children'][0]['value']
     tempTree['children']['Constant Current']['children']['Set Current']['value'] = TECparams[channel][1]['children'][3]['value']
     tempTree['children']['Temperature PID']['value'] = TECparams[channel][0]['children'][0]['value']
     tempTree['children']['Temperature PID']['children']['Set Temperature']['value'] = TECparams[channel][4]['children'][0]['value']
@@ -183,19 +235,21 @@ if __name__ == '__main__':
     cw.setLayout(l)
 
     ## Create tree of Parameter objects
-    paramList0 = Parameter.create(name='GUIparams', type='group', children=GUIparams[0])
-    paramList0.sigTreeStateChanged.connect(change)
-    ch0Tree = ParameterTree()
-    ch0Tree.setParameters(paramList0, showTop=False)
+    paramList = [Parameter.create(name='GUIparams', type='group', children=GUIparams[0]),
+                 Parameter.create(name='GUIparams', type='group', children=GUIparams[1])]
 
-    paramList1 = Parameter.create(name='GUIparams', type='group', children=GUIparams[1])
-    paramList1.sigTreeStateChanged.connect(change)
+    paramList[0].sigTreeStateChanged.connect(change0)
+    print(paramList[0].children())
+    ch0Tree = ParameterTree()
+    ch0Tree.setParameters(paramList[0], showTop=False)
+
+    paramList[1].sigTreeStateChanged.connect(change1)
     ch1Tree = ParameterTree()
-    ch1Tree.setParameters(paramList1, showTop=False)
+    ch1Tree.setParameters(paramList[1], showTop=False)
 
     TECsync()
-    paramList0.restoreState(refreshTreeParam(paramList0.saveState(), 0))
-    paramList1.restoreState(refreshTreeParam(paramList1.saveState(), 1))
+    paramList[0].restoreState(refreshTreeParam(paramList[0].saveState(), 0))
+    paramList[1].restoreState(refreshTreeParam(paramList[1].saveState(), 1))
 
     layout.addWidget(ch0Tree, 1, 1, 1, 1)
     layout.addWidget(ch1Tree, 2, 1, 1, 1)
