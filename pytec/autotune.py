@@ -17,6 +17,7 @@ class PIDAutotuneState(Enum):
     STATE_RELAY_STEP_DOWN = 'relay step down'
     STATE_SUCCEEDED = 'succeeded'
     STATE_FAILED = 'failed'
+    STATE_READY = 'ready'
 
 
 class PIDAutotune:
@@ -56,6 +57,20 @@ class PIDAutotune:
         self._Ku = 0
         self._Pu = 0
 
+    def setParam(self, target, step, noiseband, sampletime, lookback):
+        self._setpoint = target
+        self._outputstep = step
+        self._out_max = step
+        self._out_min = -step
+        self._noiseband = noiseband
+        self._inputs = deque(maxlen=round(lookback / sampletime))
+
+    def setReady(self):
+        self._state = PIDAutotuneState.STATE_READY
+
+    def setOff(self):
+        self._state = PIDAutotuneState.STATE_OFF
+
     def state(self):
         """Get the current state."""
         return self._state
@@ -81,6 +96,13 @@ class PIDAutotune:
         kd = divisors[2] * self._Ku * self._Pu
         return PIDAutotune.PIDParams(kp, ki, kd)
 
+    def get_tec_pid (self):
+        divisors = self._tuning_rules["tyreus-luyben"]
+        kp = self._Ku * divisors[0]
+        ki = divisors[1] * self._Ku / self._Pu
+        kd = divisors[2] * self._Ku * self._Pu
+        return kp, ki, kd
+
     def run(self, input_val, time_input):
         """To autotune a system, this method must be called periodically.
 
@@ -95,7 +117,8 @@ class PIDAutotune:
 
         if (self._state == PIDAutotuneState.STATE_OFF
                 or self._state == PIDAutotuneState.STATE_SUCCEEDED
-                or self._state == PIDAutotuneState.STATE_FAILED):
+                or self._state == PIDAutotuneState.STATE_FAILED
+                or self._state == PIDAutotuneState.STATE_READY):
             self._state = PIDAutotuneState.STATE_RELAY_STEP_UP
 
         self._last_run_timestamp = now

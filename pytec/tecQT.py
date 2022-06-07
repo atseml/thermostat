@@ -68,7 +68,8 @@ GUIparams = [[
     {'name': 'Save to flash', 'type': 'action', 'tip': 'Save to flash'},
 ] for _ in range(2)]
 
-autoTuneState = [PIDAutotuneState.STATE_OFF, 'idle']
+autoTuner = [PIDAutotune(20, 1, 1, 1.5, refresh_period / 1000),
+             PIDAutotune(20, 1, 1, 1.5, refresh_period / 1000)]
 
 ## If anything changes in the tree, print a message
 def change(param, changes, ch):
@@ -87,7 +88,8 @@ def change(param, changes, ch):
         if (childName == 'Disable Output'):
             tec.set_param('pwm', ch, 'i_set', 0)
             paramList[ch].child('Constant Current').child('Set Current').setValue(0) 
-            paramList[ch].child('Temperature PID').setValue(False)          
+            paramList[ch].child('Temperature PID').setValue(False)    
+            autoTuner[ch].setOff()      
 
         if (childName == 'Temperature PID'):
             if (data):
@@ -130,7 +132,13 @@ def change(param, changes, ch):
             tec.set_param('pid', ch, 'kd', data)
 
         if (childName == 'PID Config.PID Auto Tune.Run'):
-            autoTuneState[ch] = 'triggered'
+            autoTuner[ch].setParam(paramList[ch].child('PID Config').child('PID Auto Tune').child('Target Temperature').value(),
+                                   paramList[ch].child('PID Config').child('PID Auto Tune').child('Test Current').value(),
+                                   paramList[ch].child('PID Config').child('PID Auto Tune').child('Temperature Swing').value(),
+                                   refresh_period / 1000,
+                                   1)
+            autoTuner[ch].setReady()
+            paramList[ch].child('Temperature PID').setValue(False) 
 
         if (childName == 'Save to flash'):
             tec.save_config()
@@ -185,8 +193,8 @@ def TECsync():
             if parents['tag'] == 'report':
                 for data in tec.report_mode():
                     for children in parents['children']:
+                        print(data)
                         children['value'] = data[channel][children['tag']]
-                        print(data[channel][children['tag']])
                     if quit:
                         break
             if parents['tag'] == 'pwm':
@@ -226,10 +234,24 @@ def updateData():
         ch0currentGraph.update(data, cnt)
         ch1currentGraph.update(data, cnt)
 
-        for state in autoTuneState:
-            if state == 'triggered':
-                state = 'tuning'
-
+        for channel in range (2):
+            if (autoTuner[channel].state() == PIDAutotuneState.STATE_READY or
+                autoTuner[channel].state() == PIDAutotuneState.STATE_RELAY_STEP_UP or
+                autoTuner[channel].state() == PIDAutotuneState.STATE_RELAY_STEP_DOWN): 
+                autoTuner[channel].run(data[channel]['temperature'], data[channel]['time'])
+                tec.set_param('pwm', channel, 'i_set', autoTuner[channel].output())
+            elif (autoTuner[channel].state() == PIDAutotuneState.STATE_SUCCEEDED):
+                kp, ki, kd = autoTuner[channel].get_tec_pid()
+                autoTuner[channel].setOff()
+                paramList[channel].child('PID Config').child('kP').setValue(kp)
+                paramList[channel].child('PID Config').child('kI').setValue(ki)
+                paramList[channel].child('PID Config').child('kD').setValue(kd)
+                tec.set_param('pid', channel, 'kp', kp)
+                tec.set_param('pid', channel, 'ki', ki)
+                tec.set_param('pid', channel, 'kd', kd)
+            elif (autoTuner[channel].state() == PIDAutotuneState.STATE_FAILED):
+                tec.set_param('pwm', channel, 'i_set', 0)
+                autoTuner[channel].setOff()
                 
         if quit:
             break
