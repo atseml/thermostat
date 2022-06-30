@@ -67,7 +67,21 @@ On a Windows machine install [st.com](https://st.com) DfuSe USB device firmware 
 openocd -f interface/stlink-v2-1.cfg -f target/stm32f4x.cfg -c "program target/thumbv7em-none-eabihf/release/thermostat verify reset;exit"
 ```
 
-## Network
+## GUI Usage
+
+A GUI has been developed for easy configuration and plotting of key parameters.  
+
+The Python GUI program is located at pytec/tecQT.py
+
+The GUI is developed based on the Python library pyqtgraph. The environment needed to run the GUI is configured automatically by running:
+
+```shell
+nix develop
+```
+
+The GUI program assumes the default IP and port of 192.168.1.26 23 is used. If a different IP or port is used, the IP and port setting should be changed in the GUI code. 
+
+## Command Line Usage
 
 ### Connecting
 
