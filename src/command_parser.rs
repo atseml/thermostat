@@ -127,6 +127,8 @@ pub enum PwmPin {
     MaxIPos,
     MaxINeg,
     MaxV,
+    Tacho,
+    Fan
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -299,7 +301,18 @@ fn pwm_setup(input: &[u8]) -> IResult<&[u8], Result<(PwmPin, f64), Error>> {
                 )
             ),
             result_with_pin(PwmPin::MaxV)
-        ))
+        ),
+        map(
+            preceded(
+                tag("fan"),
+                preceded(
+                    whitespace,
+                    float
+                )
+            ),
+            result_with_pin(PwmPin::Fan)
+        )
+    )
     )(input)
 }
 

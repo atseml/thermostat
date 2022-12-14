@@ -199,6 +199,10 @@ impl Handler {
                 let current = ElectricCurrent::new::<ampere>(value);
                 channels.set_max_i_neg(channel, current);
             }
+            PwmPin::Tacho => {}
+            PwmPin::Fan => {
+                channels.set_pwm(channel, PwmPin::Fan, value);
+            }
         }
         send_line(socket, b"{}");
         Ok(Handler::Handled)

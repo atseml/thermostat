@@ -342,12 +342,20 @@ impl Channels {
                 get(&self.pwm.max_i_neg0),
             (0, PwmPin::MaxV) =>
                 get(&self.pwm.max_v0),
+            (0, PwmPin::Tacho) =>
+                get(&self.pwm.tacho),
+            (0, PwmPin::Fan) =>
+                get(&self.pwm.fan),
             (1, PwmPin::MaxIPos) =>
                 get(&self.pwm.max_i_pos1),
             (1, PwmPin::MaxINeg) =>
                 get(&self.pwm.max_i_neg1),
             (1, PwmPin::MaxV) =>
                 get(&self.pwm.max_v1),
+            (1, PwmPin::Tacho) =>
+                get(&self.pwm.tacho),
+            (1, PwmPin::Fan) =>
+                get(&self.pwm.fan),
             _ =>
                 unreachable!(),
         }
@@ -381,7 +389,7 @@ impl Channels {
         (self.read_tec_u_meas(channel) - ElectricPotential::new::<volt>(1.5)) * 4.0
     }
 
-    fn set_pwm(&mut self, channel: usize, pin: PwmPin, duty: f64) -> f64 {
+    pub fn set_pwm(&mut self, channel: usize, pin: PwmPin, duty: f64) -> f64 {
         fn set<P: hal::PwmPin<Duty=u16>>(pin: &mut P, duty: f64) -> f64 {
             let max = pin.get_max_duty();
             let value = ((duty * (max as f64)) as u16).min(max);
@@ -397,12 +405,16 @@ impl Channels {
                 set(&mut self.pwm.max_i_neg0, duty),
             (0, PwmPin::MaxV) =>
                 set(&mut self.pwm.max_v0, duty),
+            (0, PwmPin::Fan) =>
+                set(&mut self.pwm.fan, duty),
             (1, PwmPin::MaxIPos) =>
                 set(&mut self.pwm.max_i_pos1, duty),
             (1, PwmPin::MaxINeg) =>
                 set(&mut self.pwm.max_i_neg1, duty),
             (1, PwmPin::MaxV) =>
                 set(&mut self.pwm.max_v1, duty),
+            (1, PwmPin::Fan) =>
+                set(&mut self.pwm.fan, duty),
             _ =>
                 unreachable!(),
         }
@@ -481,6 +493,8 @@ impl Channels {
             max_v: (self.get_max_v(channel), ElectricPotential::new::<volt>(5.0)).into(),
             max_i_pos: self.get_max_i_pos(channel).into(),
             max_i_neg: self.get_max_i_neg(channel).into(),
+            tacho: self.get_pwm(0, PwmPin::Tacho),
+            fan: self.get_pwm(0, PwmPin::Fan),
         }
     }
 
@@ -578,6 +592,8 @@ pub struct PwmSummary {
     max_v: PwmSummaryField<ElectricPotential>,
     max_i_pos: PwmSummaryField<ElectricCurrent>,
     max_i_neg: PwmSummaryField<ElectricCurrent>,
+    tacho: f64,
+    fan: f64,
 }
 
 #[derive(Serialize)]

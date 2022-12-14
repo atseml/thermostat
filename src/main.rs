@@ -119,7 +119,7 @@ fn main() -> ! {
     timer::setup(cp.SYST, clocks);
 
     let (pins, mut leds, mut eeprom, eth_pins, usb) = Pins::setup(
-        clocks, dp.TIM1, dp.TIM3,
+        clocks, dp.TIM1, dp.TIM3, dp.TIM8,
         dp.GPIOA, dp.GPIOB, dp.GPIOC, dp.GPIOD, dp.GPIOE, dp.GPIOF, dp.GPIOG,
         dp.I2C1,
         dp.SPI2, dp.SPI4, dp.SPI5,
