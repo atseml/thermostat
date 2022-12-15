@@ -25,6 +25,8 @@ use smoltcp::{
     socket::TcpSocket,
     wire::EthernetAddress,
 };
+use stm32f4xx_hal::gpio::{Edge, ExtiPin};
+use stm32f4xx_hal::syscfg::SysCfgExt;
 
 mod init_log;
 use init_log::init_log;
@@ -102,7 +104,7 @@ fn main() -> ! {
     cp.SCB.enable_icache();
     cp.SCB.enable_dcache(&mut cp.CPUID);
 
-    let dp = Peripherals::take().unwrap();
+    let mut dp = Peripherals::take().unwrap();
     let clocks = dp.RCC.constrain()
         .cfgr
         .use_hse(HSE)
@@ -118,7 +120,7 @@ fn main() -> ! {
 
     timer::setup(cp.SYST, clocks);
 
-    let (pins, mut leds, mut eeprom, eth_pins, usb) = Pins::setup(
+    let (pins, mut leds, mut eeprom, eth_pins, usb, mut tacho) = Pins::setup(
         clocks, dp.TIM1, dp.TIM3, dp.TIM8,
         dp.GPIOA, dp.GPIOB, dp.GPIOC, dp.GPIOD, dp.GPIOE, dp.GPIOF, dp.GPIOG,
         dp.I2C1,
@@ -170,10 +172,17 @@ fn main() -> ! {
     let hwaddr = EthernetAddress(eui48);
     info!("EEPROM MAC address: {}", hwaddr);
 
+    tacho.make_interrupt_source(&mut dp.SYSCFG.constrain());
+    tacho.trigger_on_edge(&mut dp.EXTI, Edge::Rising);
+    tacho.enable_interrupt(&mut dp.EXTI);
+
     net::run(clocks, dp.ETHERNET_MAC, dp.ETHERNET_DMA, eth_pins, hwaddr, ipv4_config.clone(), |iface| {
         Server::<Session>::run(iface, |server| {
             leds.r1.off();
             let mut should_reset = false;
+
+            let (mut tacho_cnt, mut tacho_value) = (0u32, 0u32);
+            let mut prev_epoch = i64::from(timer::now()) >> 10;
 
             loop {
                 let mut new_ipv4_config = None;
@@ -184,6 +193,19 @@ fn main() -> ! {
                 }
 
                 let instant = Instant::from_millis(i64::from(timer::now()));
+                let tacho_input = tacho.check_interrupt();
+                tacho.clear_interrupt_pending_bit();
+                if tacho_input {
+                    tacho_cnt += 1;
+                }
+
+                let epoch = instant.millis >> 10;
+                if epoch > prev_epoch {
+                    tacho_value = tacho_cnt;
+                    tacho_cnt  = 0;
+                    prev_epoch = epoch;
+                }
+
                 cortex_m::interrupt::free(net::clear_pending);
                 server.poll(instant)
                     .unwrap_or_else(|e| {
@@ -206,7 +228,7 @@ fn main() -> ! {
                                 // Do nothing and feed more data to the line reader in the next loop cycle.
                                 Ok(SessionInput::Nothing) => {}
                                 Ok(SessionInput::Command(command)) => {
-                                    match Handler::handle_command(command, &mut socket, &mut channels, session, &mut leds, &mut store, &mut ipv4_config) {
+                                    match Handler::handle_command(command, &mut socket, &mut channels, session, &mut leds, &mut store, &mut ipv4_config, tacho_value) {
                                         Ok(Handler::NewIPV4(ip)) => new_ipv4_config = Some(ip),                                
                                         Ok(Handler::Handled) => {},
                                         Ok(Handler::CloseSocket) => socket.close(),

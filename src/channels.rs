@@ -342,8 +342,6 @@ impl Channels {
                 get(&self.pwm.max_i_neg0),
             (0, PwmPin::MaxV) =>
                 get(&self.pwm.max_v0),
-            (0, PwmPin::Tacho) =>
-                get(&self.pwm.tacho),
             (0, PwmPin::Fan) =>
                 get(&self.pwm.fan),
             (1, PwmPin::MaxIPos) =>
@@ -352,8 +350,6 @@ impl Channels {
                 get(&self.pwm.max_i_neg1),
             (1, PwmPin::MaxV) =>
                 get(&self.pwm.max_v1),
-            (1, PwmPin::Tacho) =>
-                get(&self.pwm.tacho),
             (1, PwmPin::Fan) =>
                 get(&self.pwm.fan),
             _ =>
@@ -485,7 +481,7 @@ impl Channels {
         serde_json_core::to_vec(&summaries)
     }
 
-    fn pwm_summary(&mut self, channel: usize) -> PwmSummary {
+    fn pwm_summary(&mut self, channel: usize, tacho: u32) -> PwmSummary {
         PwmSummary {
             channel,
             center: CenterPointJson(self.channel_state(channel).center.clone()),
@@ -493,15 +489,15 @@ impl Channels {
             max_v: (self.get_max_v(channel), ElectricPotential::new::<volt>(5.0)).into(),
             max_i_pos: self.get_max_i_pos(channel).into(),
             max_i_neg: self.get_max_i_neg(channel).into(),
-            tacho: self.get_pwm(0, PwmPin::Tacho),
+            tacho: tacho * 1000 / 1024,
             fan: self.get_pwm(0, PwmPin::Fan),
         }
     }
 
-    pub fn pwm_summaries_json(&mut self) -> Result<JsonBuffer, serde_json_core::ser::Error> {
+    pub fn pwm_summaries_json(&mut self, tacho: u32) -> Result<JsonBuffer, serde_json_core::ser::Error> {
         let mut summaries = Vec::<_, U2>::new();
         for channel in 0..CHANNELS {
-            let _ = summaries.push(self.pwm_summary(channel));
+            let _ = summaries.push(self.pwm_summary(channel, tacho));
         }
         serde_json_core::to_vec(&summaries)
     }
@@ -592,7 +588,7 @@ pub struct PwmSummary {
     max_v: PwmSummaryField<ElectricPotential>,
     max_i_pos: PwmSummaryField<ElectricCurrent>,
     max_i_neg: PwmSummaryField<ElectricCurrent>,
-    tacho: f64,
+    tacho: u32,
     fan: f64,
 }
 

@@ -120,7 +120,7 @@ impl Pins {
         spi2: SPI2, spi4: SPI4, spi5: SPI5,
         adc1: ADC1,
         otg_fs_global: OTG_FS_GLOBAL, otg_fs_device: OTG_FS_DEVICE, otg_fs_pwrclk: OTG_FS_PWRCLK,
-    ) -> (Self, Leds, Eeprom, EthernetPins, USB) {
+    ) -> (Self, Leds, Eeprom, EthernetPins, USB, PC8<Input<Floating>>) {
         let gpioa = gpioa.split();
         let gpiob = gpiob.split();
         let gpioc = gpioc.split();
@@ -138,8 +138,10 @@ impl Pins {
             clocks, tim1, tim3, tim8,
             gpioc.pc6, gpioc.pc7,
             gpioe.pe9, gpioe.pe11,
-            gpioe.pe13, gpioe.pe14, gpioc.pc8, gpioc.pc9
+            gpioe.pe13, gpioe.pe14, gpioc.pc9
         );
+
+       // let tacho = gpioc.pc8.into_floating_input().into_input_pin()();
 
         let (dac0_spi, dac0_sync) = Self::setup_dac0(
             clocks, spi4,
@@ -215,7 +217,7 @@ impl Pins {
             hclk: clocks.hclk(),
         };
 
-        (pins, leds, eeprom, eth_pins, usb)
+        (pins, leds, eeprom, eth_pins, usb, gpioc.pc8)
     }
 
     /// Configure the GPIO pins for SPI operation, and initialize SPI
@@ -283,12 +285,11 @@ pub struct PwmPins {
     pub max_i_pos1: PwmChannels<TIM1, pwm::C2>,
     pub max_i_neg0: PwmChannels<TIM1, pwm::C3>,
     pub max_i_neg1: PwmChannels<TIM1, pwm::C4>,
-    pub tacho: PwmChannels<TIM8, pwm::C3>,
     pub fan: PwmChannels<TIM8, pwm::C4>,
 }
 
 impl PwmPins {
-    fn setup<M1, M2, M3, M4, M5, M6, M7, M8>(
+    fn setup<M1, M2, M3, M4, M5, M6, M7>(
         clocks: Clocks,
         tim1: TIM1,
         tim3: TIM3,
@@ -299,8 +300,7 @@ impl PwmPins {
         max_i_pos1: PE11<M4>,
         max_i_neg0: PE13<M5>,
         max_i_neg1: PE14<M6>,
-        tacho: PC8<M7>,
-        fan: PC9<M8>,
+        fan: PC9<M7>,
     ) -> PwmPins {
         let freq = 20u32.khz();
 
@@ -317,12 +317,7 @@ impl PwmPins {
         init_pwm_pin(&mut max_v0);
         init_pwm_pin(&mut max_v1);
 
-        let channels = (
-            tacho.into_alternate(),
-            fan.into_alternate(),
-        );
-        let (mut tacho, mut fan) = Timer::new(tim8, &clocks).pwm(channels, freq);
-        init_pwm_pin(&mut tacho);
+        let mut fan = Timer::new(tim8, &clocks).pwm(fan.into_alternate(), freq);
         init_pwm_pin(&mut fan);
 
         let channels = (
@@ -342,7 +337,7 @@ impl PwmPins {
             max_v0, max_v1,
             max_i_pos0, max_i_pos1,
             max_i_neg0, max_i_neg1,
-            tacho, fan
+            fan
         }
     }
 }

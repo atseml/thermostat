@@ -127,7 +127,6 @@ pub enum PwmPin {
     MaxIPos,
     MaxINeg,
     MaxV,
-    Tacho,
     Fan
 }
 

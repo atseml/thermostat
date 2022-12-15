@@ -121,8 +121,8 @@ impl Handler {
         Ok(Handler::Handled)
     }
 
-    fn show_pwm(socket: &mut TcpSocket, channels: &mut Channels) -> Result<Handler, Error> {
-        match channels.pwm_summaries_json() {
+    fn show_pwm(socket: &mut TcpSocket, channels: &mut Channels, tacho: u32) -> Result<Handler, Error> {
+        match channels.pwm_summaries_json(tacho) {
             Ok(buf) => {
                 send_line(socket, &buf);
             }
@@ -199,7 +199,6 @@ impl Handler {
                 let current = ElectricCurrent::new::<ampere>(value);
                 channels.set_max_i_neg(channel, current);
             }
-            PwmPin::Tacho => {}
             PwmPin::Fan => {
                 channels.set_pwm(channel, PwmPin::Fan, value);
             }
@@ -345,14 +344,14 @@ impl Handler {
         Ok(Handler::Reset)
     }
 
-    pub fn handle_command (command: Command, socket: &mut TcpSocket, channels: &mut Channels, session: &Session, leds: &mut Leds, store: &mut FlashStore, ipv4_config: &mut Ipv4Config) -> Result<Self, Error> {
+    pub fn handle_command (command: Command, socket: &mut TcpSocket, channels: &mut Channels, session: &Session, leds: &mut Leds, store: &mut FlashStore, ipv4_config: &mut Ipv4Config, tacho_value: u32) -> Result<Self, Error> {
         match command {
             Command::Quit => Ok(Handler::CloseSocket),
             Command::Reporting(_reporting) => Handler::reporting(socket),            
             Command::Show(ShowCommand::Reporting) => Handler::show_report_mode(socket, session),            
             Command::Show(ShowCommand::Input) => Handler::show_report(socket, channels),            
             Command::Show(ShowCommand::Pid) => Handler::show_pid(socket, channels),            
-            Command::Show(ShowCommand::Pwm) => Handler::show_pwm(socket, channels),            
+            Command::Show(ShowCommand::Pwm) => Handler::show_pwm(socket, channels, tacho_value),
             Command::Show(ShowCommand::SteinhartHart) => Handler::show_steinhart_hart(socket, channels),            
             Command::Show(ShowCommand::PostFilter) => Handler::show_post_filter(socket, channels),            
             Command::Show(ShowCommand::Ipv4) => Handler::show_ipv4(socket, ipv4_config),
