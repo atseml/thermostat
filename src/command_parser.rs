@@ -179,6 +179,9 @@ pub enum Command {
         rate: Option<f32>,
     },
     Dfu,
+    Fan {
+        fan_pwm: Option<u32>
+    }
 }
 
 fn end(input: &[u8]) -> IResult<&[u8], ()> {
@@ -301,16 +304,6 @@ fn pwm_setup(input: &[u8]) -> IResult<&[u8], Result<(PwmPin, f64), Error>> {
             ),
             result_with_pin(PwmPin::MaxV)
         ),
-        map(
-            preceded(
-                tag("fan"),
-                preceded(
-                    whitespace,
-                    float
-                )
-            ),
-            result_with_pin(PwmPin::Fan)
-        )
     )
     )(input)
 }
@@ -532,6 +525,22 @@ fn ipv4(input: &[u8]) -> IResult<&[u8], Result<Command, Error>> {
     ))(input)
 }
 
+fn fan(input: &[u8]) -> IResult<&[u8], Result<Command, Error>> {
+    let (input, _) = tag("fan")(input)?;
+    let (input, fan_pwm) = alt((
+        |input| {
+            let (input, _) = whitespace(input)?;
+            let (input, value) = unsigned(input)?;
+            let (input, _) = end(input)?;
+            Ok((input, Some(value.unwrap_or(0))))
+        },
+        value(None, end)
+    ))(input)?;
+
+    let result = Ok(Command::Fan { fan_pwm });
+    Ok((input, result))
+}
+
 fn command(input: &[u8]) -> IResult<&[u8], Result<Command, Error>> {
     alt((value(Ok(Command::Quit), tag("quit")),
          load,
@@ -545,6 +554,7 @@ fn command(input: &[u8]) -> IResult<&[u8], Result<Command, Error>> {
          steinhart_hart,
          postfilter,
          value(Ok(Command::Dfu), tag("dfu")),
+         fan,
     ))(input)
 }
 

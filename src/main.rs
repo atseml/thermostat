@@ -152,6 +152,8 @@ fn main() -> ! {
         }
     }
 
+    let fan_available = channels.hw_rev.major == 2 && channels.hw_rev.minor == 2;
+
     // default net config:
     let mut ipv4_config = Ipv4Config {
         address: [192, 168, 1, 26],
@@ -172,17 +174,26 @@ fn main() -> ! {
     let hwaddr = EthernetAddress(eui48);
     info!("EEPROM MAC address: {}", hwaddr);
 
-    tacho.make_interrupt_source(&mut dp.SYSCFG.constrain());
-    tacho.trigger_on_edge(&mut dp.EXTI, Edge::Rising);
-    tacho.enable_interrupt(&mut dp.EXTI);
+    if fan_available {
+        // These lines do not cause NVIC to run the ISR,
+        // since the interrupt should be unmasked in the cortex_m::peripheral::NVIC.
+        // Also using interrupt-related workaround is the best
+        // option for the current version of stm32f4xx-hal,
+        // since tying the IC's PC8 with the PWM's PC9 to the same TIM8 is not supported,
+        // and therefore would require even more weirder and unsafe hacks.
+        // Also such hacks wouldn't guarantee it to be more precise.
+        tacho.make_interrupt_source(&mut dp.SYSCFG.constrain());
+        tacho.trigger_on_edge(&mut dp.EXTI, Edge::Rising);
+        tacho.enable_interrupt(&mut dp.EXTI);
+    }
 
     net::run(clocks, dp.ETHERNET_MAC, dp.ETHERNET_DMA, eth_pins, hwaddr, ipv4_config.clone(), |iface| {
         Server::<Session>::run(iface, |server| {
             leds.r1.off();
             let mut should_reset = false;
 
-            let (mut tacho_cnt, mut tacho_value) = (0u32, 0u32);
-            let mut prev_epoch = i64::from(timer::now()) >> 10;
+            let (mut tacho_cnt, mut tacho_value) = (0u32, None);
+            let mut prev_epoch: i64 = 0;
 
             loop {
                 let mut new_ipv4_config = None;
@@ -193,17 +204,23 @@ fn main() -> ! {
                 }
 
                 let instant = Instant::from_millis(i64::from(timer::now()));
-                let tacho_input = tacho.check_interrupt();
-                tacho.clear_interrupt_pending_bit();
-                if tacho_input {
-                    tacho_cnt += 1;
-                }
 
-                let epoch = instant.millis >> 10;
-                if epoch > prev_epoch {
-                    tacho_value = tacho_cnt;
-                    tacho_cnt  = 0;
-                    prev_epoch = epoch;
+                if fan_available {
+                    let mut tacho_input = false;
+                    cortex_m::interrupt::free(|_cs| {
+                        tacho_input = tacho.check_interrupt();
+                        tacho.clear_interrupt_pending_bit();
+                    });
+                    if tacho_input {
+                        tacho_cnt += 1;
+                    }
+
+                    let epoch = instant.secs();
+                    if epoch > prev_epoch {
+                        tacho_value = Some(tacho_cnt);
+                        tacho_cnt = 0;
+                        prev_epoch = epoch;
+                    }
                 }
 
                 cortex_m::interrupt::free(net::clear_pending);
@@ -245,7 +262,7 @@ fn main() -> ! {
                             }
                         } else if socket.can_send() {
                             if let Some(channel) = session.is_report_pending() {
-                                match channels.reports_json() {
+                                match channels.reports_json(tacho_value) {
                                     Ok(buf) => {
                                         send_line(&mut socket, &buf[..]);
                                         session.mark_report_sent(channel);

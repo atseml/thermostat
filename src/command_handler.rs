@@ -93,8 +93,8 @@ impl Handler {
         Ok(Handler::Handled)
     }
 
-    fn show_report(socket: &mut TcpSocket, channels: &mut Channels) -> Result<Handler, Error> {
-        match channels.reports_json() {
+    fn show_report(socket: &mut TcpSocket, channels: &mut Channels, tacho: Option<u32>) -> Result<Handler, Error> {
+        match channels.reports_json(tacho) {
             Ok(buf) => {
                 send_line(socket, &buf[..]);
             }
@@ -121,8 +121,8 @@ impl Handler {
         Ok(Handler::Handled)
     }
 
-    fn show_pwm(socket: &mut TcpSocket, channels: &mut Channels, tacho: u32) -> Result<Handler, Error> {
-        match channels.pwm_summaries_json(tacho) {
+    fn show_pwm(socket: &mut TcpSocket, channels: &mut Channels) -> Result<Handler, Error> {
+        match channels.pwm_summaries_json() {
             Ok(buf) => {
                 send_line(socket, &buf);
             }
@@ -200,7 +200,7 @@ impl Handler {
                 channels.set_max_i_neg(channel, current);
             }
             PwmPin::Fan => {
-                channels.set_pwm(channel, PwmPin::Fan, value);
+                channels.set_fan_pwm(value as u32);
             }
         }
         send_line(socket, b"{}");
@@ -344,14 +344,26 @@ impl Handler {
         Ok(Handler::Reset)
     }
 
-    pub fn handle_command (command: Command, socket: &mut TcpSocket, channels: &mut Channels, session: &Session, leds: &mut Leds, store: &mut FlashStore, ipv4_config: &mut Ipv4Config, tacho_value: u32) -> Result<Self, Error> {
+    fn fan (channels: &mut Channels, fan_pwm: Option<u32>) -> Result<Handler, Error> {
+        match fan_pwm {
+            Some(val) => {
+                channels.set_fan_pwm(val);
+                Ok(Handler::Handled)
+            },
+            None => {
+                Err(Error::ReportError)
+            }
+        }
+    }
+
+    pub fn handle_command (command: Command, socket: &mut TcpSocket, channels: &mut Channels, session: &Session, leds: &mut Leds, store: &mut FlashStore, ipv4_config: &mut Ipv4Config, tacho_value: Option<u32>) -> Result<Self, Error> {
         match command {
             Command::Quit => Ok(Handler::CloseSocket),
             Command::Reporting(_reporting) => Handler::reporting(socket),            
             Command::Show(ShowCommand::Reporting) => Handler::show_report_mode(socket, session),            
-            Command::Show(ShowCommand::Input) => Handler::show_report(socket, channels),            
+            Command::Show(ShowCommand::Input) => Handler::show_report(socket, channels, tacho_value),
             Command::Show(ShowCommand::Pid) => Handler::show_pid(socket, channels),            
-            Command::Show(ShowCommand::Pwm) => Handler::show_pwm(socket, channels, tacho_value),
+            Command::Show(ShowCommand::Pwm) => Handler::show_pwm(socket, channels),
             Command::Show(ShowCommand::SteinhartHart) => Handler::show_steinhart_hart(socket, channels),            
             Command::Show(ShowCommand::PostFilter) => Handler::show_post_filter(socket, channels),            
             Command::Show(ShowCommand::Ipv4) => Handler::show_ipv4(socket, ipv4_config),
@@ -366,7 +378,8 @@ impl Handler {
             Command::Save { channel } => Handler::save_channel(socket, channels, channel, store),
             Command::Ipv4(config) => Handler::set_ipv4(socket, store, config),
             Command::Reset => Handler::reset(channels),
-            Command::Dfu => Handler::dfu(channels)
+            Command::Dfu => Handler::dfu(channels),
+            Command::Fan {fan_pwm} => Handler::fan(channels, fan_pwm)
         }
     }
 }

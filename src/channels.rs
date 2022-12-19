@@ -19,11 +19,18 @@ use crate::{
     pins,
     steinhart_hart,
 };
+use crate::pins::HWRevPins;
 
 pub const CHANNELS: usize = 2;
 pub const R_SENSE: f64 = 0.05;
 // DAC chip outputs 0-5v, which is then passed through a resistor dividor to provide 0-3v range
 const DAC_OUT_V_MAX: f64 = 3.0;
+
+#[derive(Serialize, Copy, Clone)]
+pub struct HWRev {
+    pub major: u8,
+    pub minor: u8
+}
 
 // TODO: -pub
 pub struct Channels {
@@ -33,6 +40,7 @@ pub struct Channels {
     /// stm32f4 integrated adc
     pins_adc: pins::PinsAdc,
     pub pwm: pins::PwmPins,
+    pub hw_rev: HWRev
 }
 
 impl Channels {
@@ -54,13 +62,24 @@ impl Channels {
         let channel1 = Channel::new(pins.channel1, adc_calibration1);
         let pins_adc = pins.pins_adc;
         let pwm = pins.pwm;
-        let mut channels = Channels { channel0, channel1, adc, pins_adc, pwm };
+        let mut channels = Channels { channel0, channel1, adc, pins_adc, pwm, hw_rev: Self::detect_hw_rev(&pins.hwrev) };
         for channel in 0..CHANNELS {
             channels.channel_state(channel).vref = channels.read_vref(channel);
             channels.calibrate_dac_value(channel);
             channels.set_i(channel, ElectricCurrent::new::<ampere>(0.0));
         }
         channels
+    }
+
+    fn detect_hw_rev(hwrev_pins: &HWRevPins) -> HWRev {
+        let (h0, h1, h2, h3) = (hwrev_pins.hwrev0.is_high(), hwrev_pins.hwrev1.is_high(),
+                                hwrev_pins.hwrev2.is_high(), hwrev_pins.hwrev3.is_high());
+        match (h0, h1, h2, h3) {
+            (true, true, true, false) => HWRev {major: 1, minor: 0} ,
+            (true, false, false, false) => HWRev {major: 2, minor: 0} ,
+            (false, true, false, false) => HWRev {major: 2, minor: 2} ,
+            (_, _, _, _) => HWRev {major: 0, minor: 0}
+        }
     }
 
     pub fn channel_state<I: Into<usize>>(&mut self, channel: I) -> &mut ChannelState {
@@ -336,22 +355,20 @@ impl Channels {
         match (channel, pin) {
             (_, PwmPin::ISet) =>
                 panic!("i_set is no pwm pin"),
+            (_, PwmPin::Fan) =>
+                get(&self.pwm.fan),
             (0, PwmPin::MaxIPos) =>
                 get(&self.pwm.max_i_pos0),
             (0, PwmPin::MaxINeg) =>
                 get(&self.pwm.max_i_neg0),
             (0, PwmPin::MaxV) =>
                 get(&self.pwm.max_v0),
-            (0, PwmPin::Fan) =>
-                get(&self.pwm.fan),
             (1, PwmPin::MaxIPos) =>
                 get(&self.pwm.max_i_pos1),
             (1, PwmPin::MaxINeg) =>
                 get(&self.pwm.max_i_neg1),
             (1, PwmPin::MaxV) =>
                 get(&self.pwm.max_v1),
-            (1, PwmPin::Fan) =>
-                get(&self.pwm.fan),
             _ =>
                 unreachable!(),
         }
@@ -395,22 +412,20 @@ impl Channels {
         match (channel, pin) {
             (_, PwmPin::ISet) =>
                 panic!("i_set is no pwm pin"),
+            (_, PwmPin::Fan) =>
+                set(&mut self.pwm.fan, duty),
             (0, PwmPin::MaxIPos) =>
                 set(&mut self.pwm.max_i_pos0, duty),
             (0, PwmPin::MaxINeg) =>
                 set(&mut self.pwm.max_i_neg0, duty),
             (0, PwmPin::MaxV) =>
                 set(&mut self.pwm.max_v0, duty),
-            (0, PwmPin::Fan) =>
-                set(&mut self.pwm.fan, duty),
             (1, PwmPin::MaxIPos) =>
                 set(&mut self.pwm.max_i_pos1, duty),
             (1, PwmPin::MaxINeg) =>
                 set(&mut self.pwm.max_i_neg1, duty),
             (1, PwmPin::MaxV) =>
                 set(&mut self.pwm.max_v1, duty),
-            (1, PwmPin::Fan) =>
-                set(&mut self.pwm.fan, duty),
             _ =>
                 unreachable!(),
         }
@@ -437,7 +452,16 @@ impl Channels {
         (duty * max, max)
     }
 
-    fn report(&mut self, channel: usize) -> Report {
+    pub fn set_fan_pwm(&mut self, fan_pwm: u32) -> f64 {
+        let duty = fan_pwm as f64 / 100.0;
+        self.set_pwm(0, PwmPin::Fan, duty)
+    }
+
+    pub fn get_fan_pwm(&mut self) -> u32 {
+        (self.get_pwm(0, PwmPin::Fan) * 100.0) as u32
+    }
+
+    fn report(&mut self, channel: usize, tacho: Option<u32>) -> Report {
         let vref = self.channel_state(channel).vref;
         let i_set = self.get_i(channel);
         let i_tec = self.read_itec(channel);
@@ -462,13 +486,15 @@ impl Channels {
             tec_i,
             tec_u_meas: self.get_tec_v(channel),
             pid_output,
+            tacho,
+            hwrev: self.hw_rev
         }
     }
 
-    pub fn reports_json(&mut self) -> Result<JsonBuffer, serde_json_core::ser::Error> {
+    pub fn reports_json(&mut self, tacho: Option<u32>) -> Result<JsonBuffer, serde_json_core::ser::Error> {
         let mut reports = Vec::<_, U2>::new();
         for channel in 0..CHANNELS {
-            let _ = reports.push(self.report(channel));
+            let _ = reports.push(self.report(channel, tacho));
         }
         serde_json_core::to_vec(&reports)
     }
@@ -481,7 +507,7 @@ impl Channels {
         serde_json_core::to_vec(&summaries)
     }
 
-    fn pwm_summary(&mut self, channel: usize, tacho: u32) -> PwmSummary {
+    fn pwm_summary(&mut self, channel: usize) -> PwmSummary {
         PwmSummary {
             channel,
             center: CenterPointJson(self.channel_state(channel).center.clone()),
@@ -489,15 +515,14 @@ impl Channels {
             max_v: (self.get_max_v(channel), ElectricPotential::new::<volt>(5.0)).into(),
             max_i_pos: self.get_max_i_pos(channel).into(),
             max_i_neg: self.get_max_i_neg(channel).into(),
-            tacho: tacho * 1000 / 1024,
-            fan: self.get_pwm(0, PwmPin::Fan),
+            fan: self.get_fan_pwm(),
         }
     }
 
-    pub fn pwm_summaries_json(&mut self, tacho: u32) -> Result<JsonBuffer, serde_json_core::ser::Error> {
+    pub fn pwm_summaries_json(&mut self) -> Result<JsonBuffer, serde_json_core::ser::Error> {
         let mut summaries = Vec::<_, U2>::new();
         for channel in 0..CHANNELS {
-            let _ = summaries.push(self.pwm_summary(channel, tacho));
+            let _ = summaries.push(self.pwm_summary(channel));
         }
         serde_json_core::to_vec(&summaries)
     }
@@ -549,6 +574,8 @@ pub struct Report {
     tec_i: ElectricCurrent,
     tec_u_meas: ElectricPotential,
     pid_output: ElectricCurrent,
+    tacho: Option<u32>,
+    hwrev: HWRev,
 }
 
 pub struct CenterPointJson(CenterPoint);
@@ -588,8 +615,7 @@ pub struct PwmSummary {
     max_v: PwmSummaryField<ElectricPotential>,
     max_i_pos: PwmSummaryField<ElectricCurrent>,
     max_i_neg: PwmSummaryField<ElectricCurrent>,
-    tacho: u32,
-    fan: f64,
+    fan: u32,
 }
 
 #[derive(Serialize)]

@@ -101,6 +101,13 @@ pub struct ChannelPinSet<C: ChannelPins> {
     pub tec_u_meas_pin: C::TecUMeasPin,
 }
 
+pub struct HWRevPins {
+    pub hwrev0: stm32f4xx_hal::gpio::gpiod::PD0<Input<Floating>>,
+    pub hwrev1: stm32f4xx_hal::gpio::gpiod::PD1<Input<Floating>>,
+    pub hwrev2: stm32f4xx_hal::gpio::gpiod::PD2<Input<Floating>>,
+    pub hwrev3: stm32f4xx_hal::gpio::gpiod::PD3<Input<Floating>>,
+}
+
 pub struct Pins {
     pub adc_spi: AdcSpi,
     pub adc_nss: AdcNss,
@@ -108,6 +115,7 @@ pub struct Pins {
     pub pwm: PwmPins,
     pub channel0: ChannelPinSet<Channel0>,
     pub channel1: ChannelPinSet<Channel1>,
+    pub hwrev: HWRevPins
 }
 
 impl Pins {
@@ -140,8 +148,6 @@ impl Pins {
             gpioe.pe9, gpioe.pe11,
             gpioe.pe13, gpioe.pe14, gpioc.pc9
         );
-
-       // let tacho = gpioc.pc8.into_floating_input().into_input_pin()();
 
         let (dac0_spi, dac0_sync) = Self::setup_dac0(
             clocks, spi4,
@@ -189,6 +195,8 @@ impl Pins {
             pwm,
             channel0,
             channel1,
+            hwrev: HWRevPins {hwrev0: gpiod.pd0, hwrev1: gpiod.pd1,
+                hwrev2: gpiod.pd2, hwrev3: gpiod.pd3}
         };
 
         let leds = Leds::new(gpiod.pd9, gpiod.pd10.into_push_pull_output(), gpiod.pd11.into_push_pull_output());

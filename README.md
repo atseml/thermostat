@@ -124,6 +124,7 @@ formatted as line-delimited JSON.
 | `reset`                          | Reset the device                                                     |
 | `dfu`                            | Reset device and enters USB device firmware update (DFU) mode        |
 | `ipv4 <X.X.X.X/L> [Y.Y.Y.Y]`     | Configure IPv4 address, netmask length, and optional default gateway |
+| `fan <value>`                    | Set fan power with values from 0 to 100, where 0 is auto mode (TODO) |
 
 
 ## USB
