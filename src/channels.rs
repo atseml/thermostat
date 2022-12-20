@@ -1,3 +1,4 @@
+use core::cmp::max_by;
 use heapless::{consts::{U2, U1024}, Vec};
 use serde::{Serialize, Serializer};
 use smoltcp::time::Instant;
@@ -80,6 +81,10 @@ impl Channels {
             (false, true, false, false) => HWRev {major: 2, minor: 2} ,
             (_, _, _, _) => HWRev {major: 0, minor: 0}
         }
+    }
+
+    pub fn fan_available(&self) -> bool {
+        self.hw_rev.major == 2 && self.hw_rev.minor == 2
     }
 
     pub fn channel_state<I: Into<usize>>(&mut self, channel: I) -> &mut ChannelState {
@@ -461,7 +466,7 @@ impl Channels {
         (self.get_pwm(0, PwmPin::Fan) * 100.0) as u32
     }
 
-    fn report(&mut self, channel: usize, tacho: Option<u32>) -> Report {
+    fn report(&mut self, channel: usize) -> Report {
         let vref = self.channel_state(channel).vref;
         let i_set = self.get_i(channel);
         let i_tec = self.read_itec(channel);
@@ -486,15 +491,14 @@ impl Channels {
             tec_i,
             tec_u_meas: self.get_tec_v(channel),
             pid_output,
-            tacho,
             hwrev: self.hw_rev
         }
     }
 
-    pub fn reports_json(&mut self, tacho: Option<u32>) -> Result<JsonBuffer, serde_json_core::ser::Error> {
+    pub fn reports_json(&mut self) -> Result<JsonBuffer, serde_json_core::ser::Error> {
         let mut reports = Vec::<_, U2>::new();
         for channel in 0..CHANNELS {
-            let _ = reports.push(self.report(channel, tacho));
+            let _ = reports.push(self.report(channel));
         }
         serde_json_core::to_vec(&reports)
     }
@@ -515,7 +519,6 @@ impl Channels {
             max_v: (self.get_max_v(channel), ElectricPotential::new::<volt>(5.0)).into(),
             max_i_pos: self.get_max_i_pos(channel).into(),
             max_i_neg: self.get_max_i_neg(channel).into(),
-            fan: self.get_fan_pwm(),
         }
     }
 
@@ -553,6 +556,20 @@ impl Channels {
         }
         serde_json_core::to_vec(&summaries)
     }
+
+    pub fn fan_summary(&mut self, tacho: Option<u32>) -> Result<JsonBuffer, serde_json_core::ser::Error> {
+        if self.fan_available() {
+            let summary = FanSummary {
+                fan_pwm: self.get_fan_pwm(),
+                tacho: tacho.unwrap_or(u32::MAX),
+                abs_max_tec_i: max_by(self.get_tec_i(0).abs().value, self.get_tec_i(1).abs().value, |a, b| a.partial_cmp(b).unwrap())
+            };
+            serde_json_core::to_vec(&summary)
+        } else {
+            let summary: Option<()> = None;
+            serde_json_core::to_vec(&summary)
+        }
+    }
 }
 
 type JsonBuffer = Vec<u8, U1024>;
@@ -574,7 +591,6 @@ pub struct Report {
     tec_i: ElectricCurrent,
     tec_u_meas: ElectricPotential,
     pid_output: ElectricCurrent,
-    tacho: Option<u32>,
     hwrev: HWRev,
 }
 
@@ -615,7 +631,6 @@ pub struct PwmSummary {
     max_v: PwmSummaryField<ElectricPotential>,
     max_i_pos: PwmSummaryField<ElectricCurrent>,
     max_i_neg: PwmSummaryField<ElectricCurrent>,
-    fan: u32,
 }
 
 #[derive(Serialize)]
@@ -628,4 +643,11 @@ pub struct PostFilterSummary {
 pub struct SteinhartHartSummary {
     channel: usize,
     params: steinhart_hart::Parameters,
+}
+
+#[derive(Serialize)]
+pub struct FanSummary {
+    fan_pwm: u32,
+    tacho: u32,
+    abs_max_tec_i: f64,
 }

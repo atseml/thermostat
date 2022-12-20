@@ -69,7 +69,7 @@
         buildInputs = with pkgs; [
           rustPlatform.rust.rustc
           rustPlatform.rust.cargo
-          openocd dfu-util
+          openocd dfu-util gcc-arm-embedded-10
           ] ++ (with python3Packages; [
             numpy matplotlib
           ]);

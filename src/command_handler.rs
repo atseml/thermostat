@@ -93,8 +93,8 @@ impl Handler {
         Ok(Handler::Handled)
     }
 
-    fn show_report(socket: &mut TcpSocket, channels: &mut Channels, tacho: Option<u32>) -> Result<Handler, Error> {
-        match channels.reports_json(tacho) {
+    fn show_report(socket: &mut TcpSocket, channels: &mut Channels) -> Result<Handler, Error> {
+        match channels.reports_json() {
             Ok(buf) => {
                 send_line(socket, &buf[..]);
             }
@@ -344,14 +344,24 @@ impl Handler {
         Ok(Handler::Reset)
     }
 
-    fn fan (channels: &mut Channels, fan_pwm: Option<u32>) -> Result<Handler, Error> {
+    fn fan (socket: &mut TcpSocket, channels: &mut Channels, fan_pwm: Option<u32>, tacho_value: Option<u32>) -> Result<Handler, Error> {
         match fan_pwm {
             Some(val) => {
                 channels.set_fan_pwm(val);
                 Ok(Handler::Handled)
             },
             None => {
-                Err(Error::ReportError)
+                match channels.fan_summary(tacho_value) {
+                    Ok(buf) => {
+                        send_line(socket, &buf);
+                    }
+                    Err(e) => {
+                        error!("unable to serialize fan summary: {:?}", e);
+                        let _ = writeln!(socket, "{{\"error\":\"{:?}\"}}", e);
+                        return Err(Error::ReportError);
+                    }
+                };
+                Ok(Handler::Handled)
             }
         }
     }
@@ -361,7 +371,7 @@ impl Handler {
             Command::Quit => Ok(Handler::CloseSocket),
             Command::Reporting(_reporting) => Handler::reporting(socket),            
             Command::Show(ShowCommand::Reporting) => Handler::show_report_mode(socket, session),            
-            Command::Show(ShowCommand::Input) => Handler::show_report(socket, channels, tacho_value),
+            Command::Show(ShowCommand::Input) => Handler::show_report(socket, channels),
             Command::Show(ShowCommand::Pid) => Handler::show_pid(socket, channels),            
             Command::Show(ShowCommand::Pwm) => Handler::show_pwm(socket, channels),
             Command::Show(ShowCommand::SteinhartHart) => Handler::show_steinhart_hart(socket, channels),            
@@ -379,7 +389,7 @@ impl Handler {
             Command::Ipv4(config) => Handler::set_ipv4(socket, store, config),
             Command::Reset => Handler::reset(channels),
             Command::Dfu => Handler::dfu(channels),
-            Command::Fan {fan_pwm} => Handler::fan(channels, fan_pwm)
+            Command::Fan {fan_pwm} => Handler::fan(socket, channels, fan_pwm, tacho_value)
         }
     }
 }

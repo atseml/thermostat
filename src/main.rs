@@ -152,7 +152,7 @@ fn main() -> ! {
         }
     }
 
-    let fan_available = channels.hw_rev.major == 2 && channels.hw_rev.minor == 2;
+    let fan_available = channels.fan_available();
 
     // default net config:
     let mut ipv4_config = Ipv4Config {
@@ -206,12 +206,9 @@ fn main() -> ! {
                 let instant = Instant::from_millis(i64::from(timer::now()));
 
                 if fan_available {
-                    let mut tacho_input = false;
-                    cortex_m::interrupt::free(|_cs| {
-                        tacho_input = tacho.check_interrupt();
-                        tacho.clear_interrupt_pending_bit();
-                    });
+                    let tacho_input = tacho.check_interrupt();
                     if tacho_input {
+                        tacho.clear_interrupt_pending_bit();
                         tacho_cnt += 1;
                     }
 
@@ -262,7 +259,7 @@ fn main() -> ! {
                             }
                         } else if socket.can_send() {
                             if let Some(channel) = session.is_report_pending() {
-                                match channels.reports_json(tacho_value) {
+                                match channels.reports_json() {
                                     Ok(buf) => {
                                         send_line(&mut socket, &buf[..]);
                                         session.mark_report_sent(channel);
