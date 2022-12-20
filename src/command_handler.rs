@@ -347,13 +347,14 @@ impl Handler {
     fn fan (socket: &mut TcpSocket, channels: &mut Channels, fan_pwm: Option<u32>, tacho_value: Option<u32>) -> Result<Handler, Error> {
         match fan_pwm {
             Some(val) => {
+                channels.set_fan_auto_mode(val == 0);
                 channels.set_fan_pwm(val);
-                Ok(Handler::Handled)
             },
             None => {
                 match channels.fan_summary(tacho_value) {
                     Ok(buf) => {
                         send_line(socket, &buf);
+                        return Ok(Handler::Handled);
                     }
                     Err(e) => {
                         error!("unable to serialize fan summary: {:?}", e);
@@ -361,9 +362,10 @@ impl Handler {
                         return Err(Error::ReportError);
                     }
                 };
-                Ok(Handler::Handled)
             }
-        }
+        };
+        send_line(socket, b"{}");
+        Ok(Handler::Handled)
     }
 
     pub fn handle_command (command: Command, socket: &mut TcpSocket, channels: &mut Channels, session: &Session, leds: &mut Leds, store: &mut FlashStore, ipv4_config: &mut Ipv4Config, tacho_value: Option<u32>) -> Result<Self, Error> {

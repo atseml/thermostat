@@ -19,14 +19,14 @@ use stm32f4xx_hal::{
     stm32::{CorePeripherals, Peripherals, SCB},
     time::{U32Ext, MegaHertz},
     watchdog::IndependentWatchdog,
+    gpio::{Edge, ExtiPin},
+    syscfg::SysCfgExt
 };
 use smoltcp::{
     time::Instant,
     socket::TcpSocket,
     wire::EthernetAddress,
 };
-use stm32f4xx_hal::gpio::{Edge, ExtiPin};
-use stm32f4xx_hal::syscfg::SysCfgExt;
 
 mod init_log;
 use init_log::init_log;
@@ -219,6 +219,8 @@ fn main() -> ! {
                         prev_epoch = epoch;
                     }
                 }
+
+                channels.fan_ctrl();
 
                 cortex_m::interrupt::free(net::clear_pending);
                 server.poll(instant)

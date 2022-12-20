@@ -125,7 +125,7 @@ formatted as line-delimited JSON.
 | `dfu`                            | Reset device and enters USB device firmware update (DFU) mode        |
 | `ipv4 <X.X.X.X/L> [Y.Y.Y.Y]`     | Configure IPv4 address, netmask length, and optional default gateway |
 | `fan`                            | Show current fan settings and sensors' measurements                  |
-| `fan <value>`                    | Set fan power with values from 0 to 100, where 0 is auto mode (TODO) |
+| `fan <value>`                    | Set fan power with values from 0 to 100, where 0 is auto mode        |
 
 
 ## USB
@@ -271,3 +271,13 @@ with the following keys.
 ## PID Tuning
 
 The thermostat implements a PID control loop for each of the TEC channels, more details on setting up the PID control loop can be found [here](./doc/PID%20tuning.md).
+
+## Fan control
+
+Fan control is available for the thermostat revisions with integrated fan system. For this purpose two commands are available:
+1. `fan` - show fan stats: `fan_pwm`, `tacho`, `abs_max_tec_i`, `auto_mode`. Please note that `tacho` shows *approximate* value, which
+linearly correlates with the actual fan speed.
+2. `fan <value>` - set the fan power with the value from `0` to `100`. Since there is no hardware way to disable the fan,
+`0` value is used for enabling automatic fan control mode, which correlates with the square of the TEC's current. 
+Values from `1` to `100` are used for setting the power from minimum to maximum respectively.
+Please note that power doesn't correlate with the actual speed linearly.

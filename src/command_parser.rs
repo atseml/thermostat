@@ -303,8 +303,7 @@ fn pwm_setup(input: &[u8]) -> IResult<&[u8], Result<(PwmPin, f64), Error>> {
                 )
             ),
             result_with_pin(PwmPin::MaxV)
-        ),
-    )
+        ))
     )(input)
 }
 
