@@ -1,7 +1,7 @@
 import math
 import logging
 from collections import deque, namedtuple
-from enum import Enum
+from enum import StrEnum
 
 from pytec.client import Client
 
@@ -11,7 +11,7 @@ from pytec.client import Client
 # See https://github.com/t0mpr1c3/Arduino-PID-AutoTune-Library
 
 
-class PIDAutotuneState(Enum):
+class PIDAutotuneState(StrEnum):
     STATE_OFF = 'off'
     STATE_RELAY_STEP_UP = 'relay step up'
     STATE_RELAY_STEP_DOWN = 'relay step down'
