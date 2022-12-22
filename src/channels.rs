@@ -19,22 +19,13 @@ use crate::{
     command_parser::{CenterPoint, PwmPin},
     pins,
     steinhart_hart,
+    fan_ctrl::HWRev,
 };
-use crate::pins::HWRevPins;
 
 pub const CHANNELS: usize = 2;
 pub const R_SENSE: f64 = 0.05;
 // DAC chip outputs 0-5v, which is then passed through a resistor dividor to provide 0-3v range
 const DAC_OUT_V_MAX: f64 = 3.0;
-const MAX_TEC_I: f64 = 3.0; // as stated in the schemes
-const MAX_FAN_PWM: f64 = 100.0;
-const MIN_FAN_PWM: f64 = 1.0;
-
-#[derive(Serialize, Copy, Clone)]
-pub struct HWRev {
-    pub major: u8,
-    pub minor: u8
-}
 
 // TODO: -pub
 pub struct Channels {
@@ -44,8 +35,7 @@ pub struct Channels {
     /// stm32f4 integrated adc
     pins_adc: pins::PinsAdc,
     pub pwm: pins::PwmPins,
-    hw_rev: HWRev,
-    fan_auto: bool
+    pub hwrev: HWRev,
 }
 
 impl Channels {
@@ -68,28 +58,13 @@ impl Channels {
         let pins_adc = pins.pins_adc;
         let pwm = pins.pwm;
         let mut channels = Channels { channel0, channel1, adc, pins_adc, pwm,
-            hw_rev: Self::detect_hw_rev(&pins.hwrev), fan_auto: true };
+            hwrev: HWRev::detect_hw_rev(&pins.hwrev)};
         for channel in 0..CHANNELS {
             channels.channel_state(channel).vref = channels.read_vref(channel);
             channels.calibrate_dac_value(channel);
             channels.set_i(channel, ElectricCurrent::new::<ampere>(0.0));
         }
         channels
-    }
-
-    fn detect_hw_rev(hwrev_pins: &HWRevPins) -> HWRev {
-        let (h0, h1, h2, h3) = (hwrev_pins.hwrev0.is_high(), hwrev_pins.hwrev1.is_high(),
-                                hwrev_pins.hwrev2.is_high(), hwrev_pins.hwrev3.is_high());
-        match (h0, h1, h2, h3) {
-            (true, true, true, false) => HWRev {major: 1, minor: 0} ,
-            (true, false, false, false) => HWRev {major: 2, minor: 0} ,
-            (false, true, false, false) => HWRev {major: 2, minor: 2} ,
-            (_, _, _, _) => HWRev {major: 0, minor: 0}
-        }
-    }
-
-    pub fn fan_available(&self) -> bool {
-        self.hw_rev.major == 2 && self.hw_rev.minor == 2
     }
 
     pub fn channel_state<I: Into<usize>>(&mut self, channel: I) -> &mut ChannelState {
@@ -365,8 +340,6 @@ impl Channels {
         match (channel, pin) {
             (_, PwmPin::ISet) =>
                 panic!("i_set is no pwm pin"),
-            (_, PwmPin::Fan) =>
-                get(&self.pwm.fan),
             (0, PwmPin::MaxIPos) =>
                 get(&self.pwm.max_i_pos0),
             (0, PwmPin::MaxINeg) =>
@@ -422,8 +395,6 @@ impl Channels {
         match (channel, pin) {
             (_, PwmPin::ISet) =>
                 panic!("i_set is no pwm pin"),
-            (_, PwmPin::Fan) =>
-                set(&mut self.pwm.fan, duty),
             (0, PwmPin::MaxIPos) =>
                 set(&mut self.pwm.max_i_pos0, duty),
             (0, PwmPin::MaxINeg) =>
@@ -462,19 +433,6 @@ impl Channels {
         (duty * max, max)
     }
 
-    pub fn set_fan_pwm(&mut self, fan_pwm: u32) -> f64 {
-        let duty = fan_pwm as f64 / MAX_FAN_PWM;
-        self.set_pwm(0, PwmPin::Fan, duty)
-    }
-
-    pub fn get_fan_pwm(&mut self) -> u32 {
-        (self.get_pwm(0, PwmPin::Fan) * MAX_FAN_PWM) as u32
-    }
-
-    pub fn set_fan_auto_mode(&mut self, fan_auto: bool) {
-        self.fan_auto = fan_auto;
-    }
-
     fn report(&mut self, channel: usize) -> Report {
         let vref = self.channel_state(channel).vref;
         let i_set = self.get_i(channel);
@@ -500,7 +458,7 @@ impl Channels {
             tec_i,
             tec_u_meas: self.get_tec_v(channel),
             pid_output,
-            hwrev: self.hw_rev
+            hwrev: self.hwrev
         }
     }
 
@@ -566,39 +524,14 @@ impl Channels {
         serde_json_core::to_vec(&summaries)
     }
 
-    fn current_abs_max_tec_i(&mut self) -> f64 {
+    pub fn current_abs_max_tec_i(&mut self) -> f64 {
         max_by(self.get_tec_i(0).abs().get::<ampere>(),
                self.get_tec_i(1).abs().get::<ampere>(),
                |a, b| a.partial_cmp(b).unwrap_or(core::cmp::Ordering::Equal))
     }
-
-    pub fn fan_summary(&mut self, tacho: Option<u32>) -> Result<JsonBuffer, serde_json_core::ser::Error> {
-        if self.fan_available() {
-            let summary = FanSummary {
-                fan_pwm: self.get_fan_pwm(),
-                tacho: tacho.unwrap_or(u32::MAX),
-                abs_max_tec_i: self.current_abs_max_tec_i(),
-                auto_mode: self.fan_auto
-            };
-            serde_json_core::to_vec(&summary)
-        } else {
-            let summary: Option<()> = None;
-            serde_json_core::to_vec(&summary)
-        }
-    }
-
-    pub fn fan_ctrl(&mut self) {
-        if self.fan_auto && self.fan_available() {
-            let scaled_current = self.current_abs_max_tec_i() / MAX_TEC_I;
-            let pwm = max_by(scaled_current * scaled_current * MAX_FAN_PWM,
-                             MIN_FAN_PWM,
-                             |a, b| a.partial_cmp(b).unwrap_or(core::cmp::Ordering::Equal)) as u32;
-            self.set_fan_pwm(pwm);
-        }
-    }
 }
 
-type JsonBuffer = Vec<u8, U1024>;
+pub type JsonBuffer = Vec<u8, U1024>;
 
 #[derive(Serialize)]
 pub struct Report {
@@ -669,12 +602,4 @@ pub struct PostFilterSummary {
 pub struct SteinhartHartSummary {
     channel: usize,
     params: steinhart_hart::Parameters,
-}
-
-#[derive(Serialize)]
-pub struct FanSummary {
-    fan_pwm: u32,
-    tacho: u32,
-    abs_max_tec_i: f64,
-    auto_mode: bool,
 }

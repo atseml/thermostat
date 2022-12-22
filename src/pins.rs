@@ -26,14 +26,17 @@ use stm32f4xx_hal::{
         TIM1, TIM3, TIM8
     },
     timer::Timer,
-    time::U32Ext,
+    time::{U32Ext, KiloHertz},
 };
 use eeprom24x::{self, Eeprom24x};
 use stm32_eth::EthPins;
 use crate::{
     channel::{Channel0, Channel1},
     leds::Leds,
+    fan_ctrl::{TachoPin, FanPin}
 };
+
+const PWM_FREQ: KiloHertz = KiloHertz(20u32);
 
 pub type Eeprom = Eeprom24x<
     I2c<I2C1, (
@@ -128,7 +131,7 @@ impl Pins {
         spi2: SPI2, spi4: SPI4, spi5: SPI5,
         adc1: ADC1,
         otg_fs_global: OTG_FS_GLOBAL, otg_fs_device: OTG_FS_DEVICE, otg_fs_pwrclk: OTG_FS_PWRCLK,
-    ) -> (Self, Leds, Eeprom, EthernetPins, USB, PC8<Input<Floating>>) {
+    ) -> (Self, Leds, Eeprom, EthernetPins, USB, FanPin, TachoPin) {
         let gpioa = gpioa.split();
         let gpiob = gpiob.split();
         let gpioc = gpioc.split();
@@ -143,10 +146,10 @@ impl Pins {
         let pins_adc = Adc::adc1(adc1, true, Default::default());
 
         let pwm = PwmPins::setup(
-            clocks, tim1, tim3, tim8,
+            clocks, tim1, tim3,
             gpioc.pc6, gpioc.pc7,
             gpioe.pe9, gpioe.pe11,
-            gpioe.pe13, gpioe.pe14, gpioc.pc9
+            gpioe.pe13, gpioe.pe14
         );
 
         let (dac0_spi, dac0_sync) = Self::setup_dac0(
@@ -225,7 +228,9 @@ impl Pins {
             hclk: clocks.hclk(),
         };
 
-        (pins, leds, eeprom, eth_pins, usb, gpioc.pc8)
+        let fan = Timer::new(tim8, &clocks).pwm(gpioc.pc9.into_alternate(), 20u32.khz());
+
+        (pins, leds, eeprom, eth_pins, usb, fan, gpioc.pc8)
     }
 
     /// Configure the GPIO pins for SPI operation, and initialize SPI
@@ -293,24 +298,20 @@ pub struct PwmPins {
     pub max_i_pos1: PwmChannels<TIM1, pwm::C2>,
     pub max_i_neg0: PwmChannels<TIM1, pwm::C3>,
     pub max_i_neg1: PwmChannels<TIM1, pwm::C4>,
-    pub fan: PwmChannels<TIM8, pwm::C4>,
 }
 
 impl PwmPins {
-    fn setup<M1, M2, M3, M4, M5, M6, M7>(
+    fn setup<M1, M2, M3, M4, M5, M6>(
         clocks: Clocks,
         tim1: TIM1,
         tim3: TIM3,
-        tim8: TIM8,
         max_v0: PC6<M1>,
         max_v1: PC7<M2>,
         max_i_pos0: PE9<M3>,
         max_i_pos1: PE11<M4>,
         max_i_neg0: PE13<M5>,
         max_i_neg1: PE14<M6>,
-        fan: PC9<M7>,
     ) -> PwmPins {
-        let freq = 20u32.khz();
 
         fn init_pwm_pin<P: hal::PwmPin<Duty=u16>>(pin: &mut P) {
             pin.set_duty(0);
@@ -320,13 +321,10 @@ impl PwmPins {
             max_v0.into_alternate(),
             max_v1.into_alternate(),
         );
-        //let (mut max_v0, mut max_v1) = pwm::tim3(tim3, channels, clocks, freq);
-        let (mut max_v0, mut max_v1) = Timer::new(tim3, &clocks).pwm(channels, freq);
+        //let (mut max_v0, mut max_v1) = pwm::tim3(tim3, channels, clocks, PWM_FREQ);
+        let (mut max_v0, mut max_v1) = Timer::new(tim3, &clocks).pwm(channels, PWM_FREQ);
         init_pwm_pin(&mut max_v0);
         init_pwm_pin(&mut max_v1);
-
-        let mut fan = Timer::new(tim8, &clocks).pwm(fan.into_alternate(), freq);
-        init_pwm_pin(&mut fan);
 
         let channels = (
             max_i_pos0.into_alternate(),
@@ -335,7 +333,7 @@ impl PwmPins {
             max_i_neg1.into_alternate(),
         );
         let (mut max_i_pos0, mut max_i_pos1, mut max_i_neg0, mut max_i_neg1) =
-            Timer::new(tim1, &clocks).pwm(channels, freq);
+            Timer::new(tim1, &clocks).pwm(channels, PWM_FREQ);
         init_pwm_pin(&mut max_i_pos0);
         init_pwm_pin(&mut max_i_neg0);
         init_pwm_pin(&mut max_i_pos1);
@@ -344,8 +342,7 @@ impl PwmPins {
         PwmPins {
             max_v0, max_v1,
             max_i_pos0, max_i_pos1,
-            max_i_neg0, max_i_neg1,
-            fan
+            max_i_neg0, max_i_neg1
         }
     }
 }

@@ -10,7 +10,7 @@ use panic_abort as _;
 use panic_semihosting as _;
 
 use log::{error, info, warn};
-
+use core::cell::RefCell;
 use cortex_m::asm::wfi;
 use cortex_m_rt::entry;
 use stm32f4xx_hal::{
@@ -19,7 +19,6 @@ use stm32f4xx_hal::{
     stm32::{CorePeripherals, Peripherals, SCB},
     time::{U32Ext, MegaHertz},
     watchdog::IndependentWatchdog,
-    gpio::{Edge, ExtiPin},
     syscfg::SysCfgExt
 };
 use smoltcp::{
@@ -56,6 +55,8 @@ mod flash_store;
 mod dfu;
 mod command_handler;
 use command_handler::Handler;
+mod fan_ctrl;
+use fan_ctrl::FanCtrl;
 
 const HSE: MegaHertz = MegaHertz(8);
 #[cfg(not(feature = "semihosting"))]
@@ -120,7 +121,7 @@ fn main() -> ! {
 
     timer::setup(cp.SYST, clocks);
 
-    let (pins, mut leds, mut eeprom, eth_pins, usb, mut tacho) = Pins::setup(
+    let (pins, mut leds, mut eeprom, eth_pins, usb, fan, tacho) = Pins::setup(
         clocks, dp.TIM1, dp.TIM3, dp.TIM8,
         dp.GPIOA, dp.GPIOB, dp.GPIOC, dp.GPIOD, dp.GPIOE, dp.GPIOF, dp.GPIOG,
         dp.I2C1,
@@ -137,22 +138,22 @@ fn main() -> ! {
 
     usb::State::setup(usb);
 
-    let mut store = flash_store::store(dp.FLASH);
-    
+    let mut channels = RefCell::new(Channels::new(pins));
 
-    let mut channels = Channels::new(pins);
+    let mut store = flash_store::store(dp.FLASH);
     for c in 0..CHANNELS {
         match store.read_value::<ChannelConfig>(CHANNEL_CONFIG_KEY[c]) {
             Ok(Some(config)) =>
-                config.apply(&mut channels, c),
+                config.apply(channels.get_mut(), c),
             Ok(None) =>
                 error!("flash config not found for channel {}", c),
             Err(e) =>
                 error!("unable to load config {} from flash: {:?}", c, e),
         }
     }
-
-    let fan_available = channels.fan_available();
+    // considered safe since `channels` is being mutated in a single thread,
+    // while mutex would be excessive
+    let mut fan_ctrl = FanCtrl::new(fan, tacho, unsafe{ &mut *channels.as_ptr() }, &mut dp.EXTI, &mut dp.SYSCFG.constrain());
 
     // default net config:
     let mut ipv4_config = Ipv4Config {
@@ -174,53 +175,21 @@ fn main() -> ! {
     let hwaddr = EthernetAddress(eui48);
     info!("EEPROM MAC address: {}", hwaddr);
 
-    if fan_available {
-        // These lines do not cause NVIC to run the ISR,
-        // since the interrupt should be unmasked in the cortex_m::peripheral::NVIC.
-        // Also using interrupt-related workaround is the best
-        // option for the current version of stm32f4xx-hal,
-        // since tying the IC's PC8 with the PWM's PC9 to the same TIM8 is not supported,
-        // and therefore would require even more weirder and unsafe hacks.
-        // Also such hacks wouldn't guarantee it to be more precise.
-        tacho.make_interrupt_source(&mut dp.SYSCFG.constrain());
-        tacho.trigger_on_edge(&mut dp.EXTI, Edge::Rising);
-        tacho.enable_interrupt(&mut dp.EXTI);
-    }
-
     net::run(clocks, dp.ETHERNET_MAC, dp.ETHERNET_DMA, eth_pins, hwaddr, ipv4_config.clone(), |iface| {
         Server::<Session>::run(iface, |server| {
             leds.r1.off();
             let mut should_reset = false;
 
-            let (mut tacho_cnt, mut tacho_value) = (0u32, None);
-            let mut prev_epoch: i64 = 0;
-
             loop {
                 let mut new_ipv4_config = None;
                 let instant = Instant::from_millis(i64::from(timer::now()));
-                let updated_channel = channels.poll_adc(instant);
+                let updated_channel = channels.get_mut().poll_adc(instant);
                 if let Some(channel) = updated_channel {
                     server.for_each(|_, session| session.set_report_pending(channel.into()));
                 }
+                fan_ctrl.cycle();
 
                 let instant = Instant::from_millis(i64::from(timer::now()));
-
-                if fan_available {
-                    let tacho_input = tacho.check_interrupt();
-                    if tacho_input {
-                        tacho.clear_interrupt_pending_bit();
-                        tacho_cnt += 1;
-                    }
-
-                    let epoch = instant.secs();
-                    if epoch > prev_epoch {
-                        tacho_value = Some(tacho_cnt);
-                        tacho_cnt = 0;
-                        prev_epoch = epoch;
-                    }
-                }
-
-                channels.fan_ctrl();
 
                 cortex_m::interrupt::free(net::clear_pending);
                 server.poll(instant)
@@ -244,7 +213,7 @@ fn main() -> ! {
                                 // Do nothing and feed more data to the line reader in the next loop cycle.
                                 Ok(SessionInput::Nothing) => {}
                                 Ok(SessionInput::Command(command)) => {
-                                    match Handler::handle_command(command, &mut socket, &mut channels, session, &mut leds, &mut store, &mut ipv4_config, tacho_value) {
+                                    match Handler::handle_command(command, &mut socket, channels.get_mut(), session, &mut leds, &mut store, &mut ipv4_config, &mut fan_ctrl) {
                                         Ok(Handler::NewIPV4(ip)) => new_ipv4_config = Some(ip),                                
                                         Ok(Handler::Handled) => {},
                                         Ok(Handler::CloseSocket) => socket.close(),
@@ -261,7 +230,7 @@ fn main() -> ! {
                             }
                         } else if socket.can_send() {
                             if let Some(channel) = session.is_report_pending() {
-                                match channels.reports_json() {
+                                match channels.get_mut().reports_json() {
                                     Ok(buf) => {
                                         send_line(&mut socket, &buf[..]);
                                         session.mark_report_sent(channel);

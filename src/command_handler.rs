@@ -22,7 +22,8 @@ use super::{
     config::ChannelConfig,
     dfu,
     flash_store::FlashStore,
-    session::Session
+    session::Session,
+    FanCtrl,
 };
 
 use uom::{
@@ -199,9 +200,6 @@ impl Handler {
                 let current = ElectricCurrent::new::<ampere>(value);
                 channels.set_max_i_neg(channel, current);
             }
-            PwmPin::Fan => {
-                channels.set_fan_pwm(value as u32);
-            }
         }
         send_line(socket, b"{}");
         Ok(Handler::Handled)
@@ -344,14 +342,14 @@ impl Handler {
         Ok(Handler::Reset)
     }
 
-    fn fan (socket: &mut TcpSocket, channels: &mut Channels, fan_pwm: Option<u32>, tacho_value: Option<u32>) -> Result<Handler, Error> {
+    fn fan (socket: &mut TcpSocket, fan_pwm: Option<u32>, fan_ctrl: &mut FanCtrl) -> Result<Handler, Error> {
         match fan_pwm {
             Some(val) => {
-                channels.set_fan_auto_mode(val == 0);
-                channels.set_fan_pwm(val);
+                fan_ctrl.set_auto_mode(val == 0);
+                fan_ctrl.set_pwm(val);
             },
             None => {
-                match channels.fan_summary(tacho_value) {
+                match fan_ctrl.summary() {
                     Ok(buf) => {
                         send_line(socket, &buf);
                         return Ok(Handler::Handled);
@@ -368,7 +366,19 @@ impl Handler {
         Ok(Handler::Handled)
     }
 
-    pub fn handle_command (command: Command, socket: &mut TcpSocket, channels: &mut Channels, session: &Session, leds: &mut Leds, store: &mut FlashStore, ipv4_config: &mut Ipv4Config, tacho_value: Option<u32>) -> Result<Self, Error> {
+    fn fan_coeff (socket: &mut TcpSocket, fan_ctrl: &mut FanCtrl, k_a: f64, k_b: f64, k_c: f64) -> Result<Handler, Error> {
+        fan_ctrl.set_coefficients(k_a, k_b, k_c);
+        send_line(socket, b"{}");
+        Ok(Handler::Handled)
+    }
+
+    fn fan_defaults (socket: &mut TcpSocket, fan_ctrl: &mut FanCtrl) -> Result<Handler, Error> {
+        fan_ctrl.restore_defaults();
+        send_line(socket, b"{}");
+        Ok(Handler::Handled)
+    }
+
+    pub fn handle_command (command: Command, socket: &mut TcpSocket, channels: &mut Channels, session: &Session, leds: &mut Leds, store: &mut FlashStore, ipv4_config: &mut Ipv4Config, fan_ctrl: &mut FanCtrl) -> Result<Self, Error> {
         match command {
             Command::Quit => Ok(Handler::CloseSocket),
             Command::Reporting(_reporting) => Handler::reporting(socket),            
@@ -391,7 +401,9 @@ impl Handler {
             Command::Ipv4(config) => Handler::set_ipv4(socket, store, config),
             Command::Reset => Handler::reset(channels),
             Command::Dfu => Handler::dfu(channels),
-            Command::Fan {fan_pwm} => Handler::fan(socket, channels, fan_pwm, tacho_value)
+            Command::Fan {fan_pwm} => Handler::fan(socket, fan_pwm, fan_ctrl),
+            Command::FanCoeff { k_a, k_b, k_c } => Handler::fan_coeff(socket, fan_ctrl, k_a, k_b, k_c),
+            Command::FanDefaults => Handler::fan_defaults(socket, fan_ctrl),
         }
     }
 }

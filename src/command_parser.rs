@@ -1,16 +1,7 @@
 use core::fmt;
 use core::num::ParseIntError;
 use core::str::{from_utf8, Utf8Error};
-use nom::{
-    IResult,
-    branch::alt,
-    bytes::complete::{is_a, tag, take_while1},
-    character::{is_digit, complete::{char, one_of}},
-    combinator::{complete, map, opt, value},
-    sequence::preceded,
-    multi::{fold_many0, fold_many1},
-    error::ErrorKind,
-};
+use nom::{IResult, branch::alt, bytes::complete::{is_a, tag, take_while1}, character::{is_digit, complete::{char, one_of}}, combinator::{complete, map, opt, value}, sequence::preceded, multi::{fold_many0, fold_many1}, error::ErrorKind, Needed};
 use num_traits::{Num, ParseFloatError};
 use serde::{Serialize, Deserialize};
 
@@ -127,7 +118,6 @@ pub enum PwmPin {
     MaxIPos,
     MaxINeg,
     MaxV,
-    Fan
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -181,7 +171,13 @@ pub enum Command {
     Dfu,
     Fan {
         fan_pwm: Option<u32>
-    }
+    },
+    FanCoeff {
+        k_a: f64,
+        k_b: f64,
+        k_c: f64,
+    },
+    FanDefaults,
 }
 
 fn end(input: &[u8]) -> IResult<&[u8], ()> {
@@ -540,6 +536,33 @@ fn fan(input: &[u8]) -> IResult<&[u8], Result<Command, Error>> {
     Ok((input, result))
 }
 
+fn fan_coeff(input: &[u8]) -> IResult<&[u8], Result<Command, Error>> {
+    let (input, _) = tag("fcurve")(input)?;
+    let (input, coeffs) = alt((
+        |input| {
+            let (input, _) = whitespace(input)?;
+            let (input, k_a) = float(input)?;
+            let (input, _) = whitespace(input)?;
+            let (input, k_b) = float(input)?;
+            let (input, _) = whitespace(input)?;
+            let (input, k_c) = float(input)?;
+            let (input, _) = end(input)?;
+            if k_a.is_ok() && k_b.is_ok() && k_c.is_ok() {
+                Ok((input, Some((k_a.unwrap(), k_b.unwrap(), k_c.unwrap()))))
+            } else {
+                Err(nom::Err::Incomplete(Needed::Size(3)))
+            }
+        },
+        value(None, end)
+    ))(input)?;
+
+    let result = match coeffs {
+        Some(coeffs) => Ok(Command::FanCoeff { k_a: coeffs.0, k_b: coeffs.1, k_c: coeffs.2 }),
+        None => Err(Error::ParseFloat)
+    };
+    Ok((input, result))
+}
+
 fn command(input: &[u8]) -> IResult<&[u8], Result<Command, Error>> {
     alt((value(Ok(Command::Quit), tag("quit")),
          load,
@@ -553,7 +576,9 @@ fn command(input: &[u8]) -> IResult<&[u8], Result<Command, Error>> {
          steinhart_hart,
          postfilter,
          value(Ok(Command::Dfu), tag("dfu")),
+         value(Ok(Command::FanDefaults), tag("fan-restore")),
          fan,
+         fan_coeff,
     ))(input)
 }
 
