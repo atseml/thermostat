@@ -26,9 +26,10 @@ const MAX_TEC_I: f64 = 3.0;
 const MAX_FAN_PWM: f64 = 100.0;
 const MIN_FAN_PWM: f64 = 1.0;
 const TACHO_MEASURE_MS: i64 = 2500;
+const TACHO_LOW_THRESHOLD: u32 = 100;
 const DEFAULT_K_A: f64 = 1.0;
 const DEFAULT_K_B: f64 = 0.0;
-const DEFAULT_K_C: f64 = 0.0;
+const DEFAULT_K_C: f64 = 0.04;
 
 #[derive(Serialize, Copy, Clone)]
 pub struct HWRev {
@@ -36,11 +37,20 @@ pub struct HWRev {
     pub minor: u8,
 }
 
+#[derive(Serialize, Clone, Copy, PartialEq)]
+pub enum FanStatus {
+    OK,
+    NotAvailable,
+    Stalled,
+    LowSignal,
+}
+
 struct TachoCtrl {
     tacho: TachoPin,
     tacho_cnt: u32,
     tacho_value: Option<u32>,
     prev_epoch: i64,
+    past_record: u64,
 }
 
 pub struct FanCtrl<'a> {
@@ -52,6 +62,7 @@ pub struct FanCtrl<'a> {
     k_b: f64,
     k_c: f64,
     channels: &'a mut Channels,
+    last_status: FanStatus
 }
 
 impl<'a> FanCtrl<'a> {
@@ -74,14 +85,22 @@ impl<'a> FanCtrl<'a> {
             k_b: DEFAULT_K_B,
             k_c: DEFAULT_K_C,
             channels,
+            last_status: FanStatus::OK,
         }
     }
 
-    pub fn cycle(&mut self) {
+    pub fn cycle(&mut self) -> Result<(), FanStatus>{
         if self.available {
             self.tacho.cycle();
         }
         self.adjust_speed();
+        let diagnose = self.diagnose();
+        if diagnose != self.last_status {
+            self.last_status = diagnose;
+            Err(diagnose)
+        } else {
+            Ok(())
+        }
     }
 
     pub fn summary(&mut self) -> Result<JsonBuffer, serde_json_core::ser::Error> {
@@ -91,6 +110,7 @@ impl<'a> FanCtrl<'a> {
                 tacho: self.tacho.get(),
                 abs_max_tec_i: self.channels.current_abs_max_tec_i(),
                 auto_mode: self.fan_auto,
+                status: self.diagnose(),
                 k_a: self.k_a,
                 k_b: self.k_b,
                 k_c: self.k_c,
@@ -139,6 +159,13 @@ impl<'a> FanCtrl<'a> {
         value as f64 / (max as f64)
     }
 
+    fn diagnose(&mut self) -> FanStatus {
+        if !self.available {
+            return FanStatus::NotAvailable;
+        }
+        self.tacho.diagnose()
+    }
+
     fn get_pwm(&self) -> u32 {
         let duty = self.fan.get_duty();
         let max = self.fan.get_max_duty();
@@ -147,16 +174,17 @@ impl<'a> FanCtrl<'a> {
 }
 
 impl TachoCtrl {
-    pub fn new(tacho: TachoPin) -> Self {
+    fn new(tacho: TachoPin) -> Self {
         TachoCtrl {
             tacho,
             tacho_cnt: 0,
             tacho_value: None,
             prev_epoch: 0,
+            past_record: 0,
         }
     }
 
-    pub fn init(&mut self, exti: &mut EXTI, syscfg: &mut SysCfg) {
+    fn init(&mut self, exti: &mut EXTI, syscfg: &mut SysCfg) {
         // These lines do not cause NVIC to run the ISR,
         // since the interrupt should be unmasked in the cortex_m::peripheral::NVIC.
         // Also using interrupt-related workaround is the best
@@ -169,7 +197,17 @@ impl TachoCtrl {
         self.tacho.enable_interrupt(exti);
     }
 
-    pub fn cycle(&mut self) {
+    #[inline]
+    fn add_record(&mut self, value: u32) {
+        self.past_record = self.past_record << 2;
+        if value >= TACHO_LOW_THRESHOLD {
+            self.past_record += 0b11;
+        } else if value > 0 && self.tacho_cnt < TACHO_LOW_THRESHOLD {
+            self.past_record += 0b10;
+        }
+    }
+
+    fn cycle(&mut self) {
         let tacho_input = self.tacho.check_interrupt();
         if tacho_input {
             self.tacho.clear_interrupt_pending_bit();
@@ -179,13 +217,24 @@ impl TachoCtrl {
         let instant = Instant::from_millis(i64::from(timer::now()));
         if instant.millis - self.prev_epoch >= TACHO_MEASURE_MS {
             self.tacho_value = Some(self.tacho_cnt);
+            self.add_record(self.tacho_cnt);
             self.tacho_cnt = 0;
             self.prev_epoch = instant.millis;
         }
     }
 
-    pub fn get(&self) -> u32 {
+    fn get(&self) -> u32 {
         self.tacho_value.unwrap_or(u32::MAX)
+    }
+
+    fn diagnose(&mut self) -> FanStatus {
+        if self.past_record & 0b11 == 0b11 {
+            FanStatus::OK
+        } else if self.past_record & 0xAAAAAAAAAAAAAAAA > 0 {
+            FanStatus::LowSignal
+        } else {
+            FanStatus::Stalled
+        }
     }
 }
 
@@ -212,7 +261,19 @@ pub struct FanSummary {
     tacho: u32,
     abs_max_tec_i: f64,
     auto_mode: bool,
+    status: FanStatus,
     k_a: f64,
     k_b: f64,
     k_c: f64,
+}
+
+impl FanStatus {
+    pub fn fmt_u8(&self) -> &'static [u8] {
+        match *self {
+            FanStatus::OK => "Fan is OK".as_bytes(),
+            FanStatus::NotAvailable => "Fan is not available".as_bytes(),
+            FanStatus::Stalled => "Fan is stalled".as_bytes(),
+            FanStatus::LowSignal => "Fan is low signal".as_bytes(),
+        }
+    }
 }

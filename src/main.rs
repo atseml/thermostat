@@ -187,10 +187,10 @@ fn main() -> ! {
                 if let Some(channel) = updated_channel {
                     server.for_each(|_, session| session.set_report_pending(channel.into()));
                 }
-                fan_ctrl.cycle();
+
+                let fan_status = fan_ctrl.cycle();
 
                 let instant = Instant::from_millis(i64::from(timer::now()));
-
                 cortex_m::interrupt::free(net::clear_pending);
                 server.poll(instant)
                     .unwrap_or_else(|e| {
@@ -241,6 +241,12 @@ fn main() -> ! {
                                     }
                                 }
                             }
+                            match fan_status {
+                                Ok(_) => {}
+                                Err(status) => {
+                                    send_line(&mut socket, status.fmt_u8());
+                                }
+                            };
                         }
                     });
                 } else {
