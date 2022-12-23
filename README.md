@@ -286,4 +286,4 @@ Please note that power doesn't correlate with the actual speed linearly.
 3. `fcurve <a> <b> <c>` - set coefficients of the controlling curve `a*x^2 + b*x + c`, where `x` is `abs_max_tec_i/MAX_TEC_I`, 
 i.e. receives values from 0 to 1 linearly tied to the maximum current. The controlling curve should produce values from 0 to 1,
 as below and beyond values would be substituted by 0 and 1 respectively.
-4. `fan-restore` - restore fan settings to defaults: `auto = true, a = 1.0, b = 0.0, c = 0.0`.
+4. `fan-restore` - restore fan settings to defaults: `auto = true, a = 1.0, b = 0.0, c = 0.04`.

@@ -138,9 +138,9 @@ fn main() -> ! {
 
     usb::State::setup(usb);
 
-    let mut channels = RefCell::new(Channels::new(pins));
-
     let mut store = flash_store::store(dp.FLASH);
+
+    let mut channels = RefCell::new(Channels::new(pins));
     for c in 0..CHANNELS {
         match store.read_value::<ChannelConfig>(CHANNEL_CONFIG_KEY[c]) {
             Ok(Some(config)) =>

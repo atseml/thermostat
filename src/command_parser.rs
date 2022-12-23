@@ -1,7 +1,17 @@
 use core::fmt;
 use core::num::ParseIntError;
 use core::str::{from_utf8, Utf8Error};
-use nom::{IResult, branch::alt, bytes::complete::{is_a, tag, take_while1}, character::{is_digit, complete::{char, one_of}}, combinator::{complete, map, opt, value}, sequence::preceded, multi::{fold_many0, fold_many1}, error::ErrorKind, Needed};
+use nom::{
+    IResult,
+    branch::alt,
+    bytes::complete::{is_a, tag, take_while1},
+    character::{is_digit, complete::{char, one_of}},
+    combinator::{complete, map, opt, value},
+    sequence::preceded,
+    multi::{fold_many0, fold_many1},
+    error::ErrorKind,
+    Needed,
+};
 use num_traits::{Num, ParseFloatError};
 use serde::{Serialize, Deserialize};
 
