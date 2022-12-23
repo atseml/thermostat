@@ -585,22 +585,25 @@ fn fan_curve(input: &[u8]) -> IResult<&[u8], Result<Command, Error>> {
 }
 
 fn command(input: &[u8]) -> IResult<&[u8], Result<Command, Error>> {
-    alt((value(Ok(Command::Quit), tag("quit")),
-         load,
-         save,
-         value(Ok(Command::Reset), tag("reset")),
-         ipv4,
-         map(report, Ok),
-         pwm,
-         center_point,
-         pid,
-         steinhart_hart,
-         postfilter,
-         value(Ok(Command::Dfu), tag("dfu")),
-         fan,
-         fan_curve,
-         value(Ok(Command::ShowHWRev), tag("hwrev")),
-    ))(input)
+    let (input, result) =
+        alt((value(Ok(Command::Quit), tag("quit")),
+           load,
+           save,
+           value(Ok(Command::Reset), tag("reset")),
+           ipv4,
+           map(report, Ok),
+           pwm,
+           center_point,
+           pid,
+           steinhart_hart,
+           postfilter,
+           value(Ok(Command::Dfu), tag("dfu")),
+           fan,
+           fan_curve,
+           value(Ok(Command::ShowHWRev), tag("hwrev")),
+    ))(input)?;
+    let (input, _) = end(input)?;  // accept trailing whitespace(s) if present
+    Ok((input, result))
 }
 
 impl Command {
@@ -619,46 +622,57 @@ impl Command {
 #[cfg(test)]
 mod test {
     use super::*;
+    extern crate format_bytes;
+    use format_bytes::format_bytes;
+
+    macro_rules! parse_chkwhitespace {
+        ($cmd: literal) => {{
+            let command = Command::parse($cmd);
+            let command_w = Command::parse(&format_bytes!(b"{}\r\t \r\n\n\t ", $cmd));
+            assert_eq!(command, command_w);
+            command
+        }};
+    }
 
     #[test]
     fn parse_quit() {
-        let command = Command::parse(b"quit");
+        let command = parse_chkwhitespace!(b"quit");
         assert_eq!(command, Ok(Command::Quit));
     }
 
     #[test]
     fn parse_load() {
-        let command = Command::parse(b"load");
+        let command = parse_chkwhitespace!(b"load");
         assert_eq!(command, Ok(Command::Load { channel: None }));
     }
 
     #[test]
     fn parse_load_channel() {
-        let command = Command::parse(b"load 0");
+        let command = parse_chkwhitespace!(b"load 0");
         assert_eq!(command, Ok(Command::Load { channel: Some(0) }));
     }
 
     #[test]
     fn parse_save() {
-        let command = Command::parse(b"save");
+        let command = parse_chkwhitespace!(b"save");
         assert_eq!(command, Ok(Command::Save { channel: None }));
     }
 
     #[test]
     fn parse_save_channel() {
-        let command = Command::parse(b"save 0");
+        let command = parse_chkwhitespace!(b"save 0");
         assert_eq!(command, Ok(Command::Save { channel: Some(0) }));
     }
 
     #[test]
     fn parse_show_ipv4() {
-        let command = Command::parse(b"ipv4");
+        let command = parse_chkwhitespace!(b"ipv4");
         assert_eq!(command, Ok(Command::Show(ShowCommand::Ipv4)));
     }
 
     #[test]
     fn parse_ipv4() {
-        let command = Command::parse(b"ipv4 192.168.1.26/24");
+        let command = parse_chkwhitespace!(b"ipv4 192.168.1.26/24");
         assert_eq!(command, Ok(Command::Ipv4(Ipv4Config {
             address: [192, 168, 1, 26],
             mask_len: 24,
@@ -668,7 +682,7 @@ mod test {
 
     #[test]
     fn parse_ipv4_and_gateway() {
-        let command = Command::parse(b"ipv4 10.42.0.126/8 10.1.0.1");
+        let command = parse_chkwhitespace!(b"ipv4 10.42.0.126/8 10.1.0.1");
         assert_eq!(command, Ok(Command::Ipv4(Ipv4Config {
             address: [10, 42, 0, 126],
             mask_len: 8,
@@ -678,31 +692,31 @@ mod test {
 
     #[test]
     fn parse_report() {
-        let command = Command::parse(b"report");
+        let command = parse_chkwhitespace!(b"report");
         assert_eq!(command, Ok(Command::Show(ShowCommand::Input)));
     }
 
     #[test]
     fn parse_report_mode() {
-        let command = Command::parse(b"report mode");
+        let command = parse_chkwhitespace!(b"report mode");
         assert_eq!(command, Ok(Command::Show(ShowCommand::Reporting)));
     }
 
     #[test]
     fn parse_report_mode_on() {
-        let command = Command::parse(b"report mode on");
+        let command = parse_chkwhitespace!(b"report mode on");
         assert_eq!(command, Ok(Command::Reporting(true)));
     }
 
     #[test]
     fn parse_report_mode_off() {
-        let command = Command::parse(b"report mode off");
+        let command = parse_chkwhitespace!(b"report mode off");
         assert_eq!(command, Ok(Command::Reporting(false)));
     }
 
     #[test]
     fn parse_pwm_i_set() {
-        let command = Command::parse(b"pwm 1 i_set 16383");
+        let command = parse_chkwhitespace!(b"pwm 1 i_set 16383");
         assert_eq!(command, Ok(Command::Pwm {
             channel: 1,
             pin: PwmPin::ISet,
@@ -712,7 +726,7 @@ mod test {
 
     #[test]
     fn parse_pwm_pid() {
-        let command = Command::parse(b"pwm 0 pid");
+        let command = parse_chkwhitespace!(b"pwm 0 pid");
         assert_eq!(command, Ok(Command::PwmPid {
             channel: 0,
         }));
@@ -720,7 +734,7 @@ mod test {
 
     #[test]
     fn parse_pwm_max_i_pos() {
-        let command = Command::parse(b"pwm 0 max_i_pos 7");
+        let command = parse_chkwhitespace!(b"pwm 0 max_i_pos 7");
         assert_eq!(command, Ok(Command::Pwm {
             channel: 0,
             pin: PwmPin::MaxIPos,
@@ -730,7 +744,7 @@ mod test {
 
     #[test]
     fn parse_pwm_max_i_neg() {
-        let command = Command::parse(b"pwm 0 max_i_neg 128");
+        let command = parse_chkwhitespace!(b"pwm 0 max_i_neg 128");
         assert_eq!(command, Ok(Command::Pwm {
             channel: 0,
             pin: PwmPin::MaxINeg,
@@ -740,7 +754,7 @@ mod test {
 
     #[test]
     fn parse_pwm_max_v() {
-        let command = Command::parse(b"pwm 0 max_v 32768");
+        let command = parse_chkwhitespace!(b"pwm 0 max_v 32768");
         assert_eq!(command, Ok(Command::Pwm {
             channel: 0,
             pin: PwmPin::MaxV,
@@ -750,13 +764,13 @@ mod test {
 
     #[test]
     fn parse_pid() {
-        let command = Command::parse(b"pid");
+        let command = parse_chkwhitespace!(b"pid");
         assert_eq!(command, Ok(Command::Show(ShowCommand::Pid)));
     }
 
     #[test]
     fn parse_pid_target() {
-        let command = Command::parse(b"pid 0 target 36.5");
+        let command = parse_chkwhitespace!(b"pid 0 target 36.5");
         assert_eq!(command, Ok(Command::Pid {
             channel: 0,
             parameter: PidParameter::Target,
@@ -766,13 +780,13 @@ mod test {
 
     #[test]
     fn parse_steinhart_hart() {
-        let command = Command::parse(b"s-h");
+        let command = parse_chkwhitespace!(b"s-h");
         assert_eq!(command, Ok(Command::Show(ShowCommand::SteinhartHart)));
     }
 
     #[test]
     fn parse_steinhart_hart_set() {
-        let command = Command::parse(b"s-h 1 t0 23.05");
+        let command = parse_chkwhitespace!(b"s-h 1 t0 23.05");
         assert_eq!(command, Ok(Command::SteinhartHart {
             channel: 1,
             parameter: ShParameter::T0,
@@ -782,13 +796,13 @@ mod test {
 
     #[test]
     fn parse_postfilter() {
-        let command = Command::parse(b"postfilter");
+        let command = parse_chkwhitespace!(b"postfilter");
         assert_eq!(command, Ok(Command::Show(ShowCommand::PostFilter)));
     }
 
     #[test]
     fn parse_postfilter_off() {
-        let command = Command::parse(b"postfilter 1 off");
+        let command = parse_chkwhitespace!(b"postfilter 1 off");
         assert_eq!(command, Ok(Command::PostFilter {
             channel: 1,
             rate: None,
@@ -797,7 +811,7 @@ mod test {
 
     #[test]
     fn parse_postfilter_rate() {
-        let command = Command::parse(b"postfilter 0 rate 21");
+        let command = parse_chkwhitespace!(b"postfilter 0 rate 21");
         assert_eq!(command, Ok(Command::PostFilter {
             channel: 0,
             rate: Some(21.0),
@@ -806,7 +820,7 @@ mod test {
 
     #[test]
     fn parse_center_point() {
-        let command = Command::parse(b"center 0 1.5");
+        let command = parse_chkwhitespace!(b"center 0 1.5");
         assert_eq!(command, Ok(Command::CenterPoint {
             channel: 0,
             center: CenterPoint::Override(1.5),
@@ -815,7 +829,7 @@ mod test {
 
     #[test]
     fn parse_center_point_vref() {
-        let command = Command::parse(b"center 1 vref");
+        let command = parse_chkwhitespace!(b"center 1 vref");
         assert_eq!(command, Ok(Command::CenterPoint {
             channel: 1,
             center: CenterPoint::Vref,
@@ -824,25 +838,25 @@ mod test {
 
     #[test]
     fn parse_fan_show() {
-        let command = Command::parse(b"fan");
+        let command = parse_chkwhitespace!(b"fan");
         assert_eq!(command, Ok(Command::ShowFan));
     }
 
     #[test]
     fn parse_fan_set() {
-        let command = Command::parse(b"fan 42");
+        let command = parse_chkwhitespace!(b"fan 42");
         assert_eq!(command, Ok(Command::FanSet {fan_pwm: 42}));
     }
 
     #[test]
     fn parse_fan_auto() {
-        let command = Command::parse(b"fan auto");
+        let command = parse_chkwhitespace!(b"fan auto");
         assert_eq!(command, Ok(Command::FanAuto));
     }
 
     #[test]
     fn parse_fcurve_set() {
-        let command = Command::parse(b"fcurve 1.2 3.4 5.6");
+        let command = parse_chkwhitespace!(b"fcurve 1.2 3.4 5.6");
         assert_eq!(command, Ok(Command::FanCurve {
             k_a: 1.2,
             k_b: 3.4,
@@ -852,13 +866,13 @@ mod test {
 
     #[test]
     fn parse_fcurve_default() {
-        let command = Command::parse(b"fcurve default");
+        let command = parse_chkwhitespace!(b"fcurve default");
         assert_eq!(command, Ok(Command::FanCurveDefaults));
     }
 
     #[test]
     fn parse_hwrev() {
-        let command = Command::parse(b"hwrev");
+        let command = parse_chkwhitespace!(b"hwrev");
         assert_eq!(command, Ok(Command::ShowHWRev));
     }
 }

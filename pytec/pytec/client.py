@@ -23,7 +23,7 @@ class Client:
         return line
 
     def _command(self, *command):
-        self._socket.sendall(((" ".join(command)).strip() + "\n").encode('utf-8'))
+        self._socket.sendall((" ".join(command) + "\n").encode('utf-8'))
 
         line = self._read_line()
         response = json.loads(line)

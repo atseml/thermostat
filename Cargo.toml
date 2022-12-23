@@ -38,6 +38,9 @@ heapless = "0.5"
 serde-json-core = "0.1"
 sfkv = "0.1"
 
+[dev-dependencies]
+format-bytes = "0.3.0"
+
 [features]
 semihosting = ["panic-semihosting", "cortex-m-log/semihosting"]
 
