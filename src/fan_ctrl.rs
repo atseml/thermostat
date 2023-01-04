@@ -1,4 +1,3 @@
-use core::{cmp::max_by};
 use serde::Serialize;
 use stm32f4xx_hal::{
     pwm::{self, PwmChannels},
@@ -21,15 +20,33 @@ use crate::{
 pub type FanPin = PwmChannels<TIM8, pwm::C4>;
 pub type TachoPin = PC8<Input<Floating>>;
 
-const MAX_TEC_I: f64 = 3.0;
 // as stated in the schematics
-const MAX_FAN_PWM: f64 = 100.0;
-const MIN_FAN_PWM: f64 = 1.0;
+const MAX_TEC_I: f64 = 3.0;
+
+const MAX_USER_FAN_PWM: f64 = 100.0;
+const MIN_USER_FAN_PWM: f64 = 1.0;
+const MAX_FAN_PWM: f64 = 1.0;
+// below this value, motor pulse signal is too weak to be registered by tachometer
+const MIN_FAN_PWM: f64 = 0.05;
+
 const TACHO_MEASURE_MS: i64 = 2500;
-const TACHO_LOW_THRESHOLD: u32 = 100;
+// by default up to 2 cycles are skipped on changes in PWM output,
+// and the halt threshold will help detect the failure during these skipped cycles
+const TACHO_HALT_THRESHOLD: u32 = 250;
+const TACHO_SKIP_CYCLES: u8 = 2;
+
 const DEFAULT_K_A: f64 = 1.0;
 const DEFAULT_K_B: f64 = 0.0;
-const DEFAULT_K_C: f64 = 0.04;
+const DEFAULT_K_C: f64 = 0.0;
+
+// This regression is from 6% to 25% lower than values registered in the experiments.
+// Actual values would be better estimated by logarithmic regression, but that would require more
+// runtime computation, and wouldn't give significant correlation difference
+// (0.996 for log and 0.966 for quadratic regression).
+const TACHO_REGRESSION_A: f64 = -0.04135128436;
+const TACHO_REGRESSION_B: f64 = 6.23015531;
+const TACHO_REGRESSION_C: f64 = 403.6833577;
+
 
 #[derive(Serialize, Copy, Clone)]
 pub struct HWRev {
@@ -41,8 +58,8 @@ pub struct HWRev {
 pub enum FanStatus {
     OK,
     NotAvailable,
-    Stalled,
-    LowSignal,
+    TooSlow,
+    Halted
 }
 
 struct TachoCtrl {
@@ -50,10 +67,9 @@ struct TachoCtrl {
     tacho_cnt: u32,
     tacho_value: Option<u32>,
     prev_epoch: i64,
-    past_record: u64,
 }
 
-pub struct FanCtrl<'a> {
+pub struct FanCtrl {
     fan: FanPin,
     tacho: TachoCtrl,
     fan_auto: bool,
@@ -61,12 +77,13 @@ pub struct FanCtrl<'a> {
     k_a: f64,
     k_b: f64,
     k_c: f64,
-    channels: &'a mut Channels,
-    last_status: FanStatus
+    pub channels: Channels,
+    last_status: FanStatus,
+    skip_cycles: u8,
 }
 
-impl<'a> FanCtrl<'a> {
-    pub fn new(mut fan: FanPin, tacho: TachoPin, channels: &'a mut Channels, exti: &mut EXTI, syscfg: &mut SysCfg) -> Self {
+impl FanCtrl {
+    pub fn new(mut fan: FanPin, tacho: TachoPin, channels: Channels, exti: &mut EXTI, syscfg: &mut SysCfg) -> Self {
         let available = channels.hwrev.fan_available();
 
         let mut tacho_ctrl = TachoCtrl::new(tacho);
@@ -85,17 +102,20 @@ impl<'a> FanCtrl<'a> {
             k_b: DEFAULT_K_B,
             k_c: DEFAULT_K_C,
             channels,
-            last_status: FanStatus::OK,
+            last_status: if available { FanStatus::OK } else { FanStatus::NotAvailable },
+            skip_cycles: 0
         }
     }
 
-    pub fn cycle(&mut self) -> Result<(), FanStatus>{
+    pub fn cycle(&mut self) -> Result<(), FanStatus> {
         if self.available {
-            self.tacho.cycle();
+            if self.tacho.cycle() {
+                self.skip_cycles >>= 1;
+            }
         }
         self.adjust_speed();
         let diagnose = self.diagnose();
-        if diagnose != self.last_status {
+        if (self.skip_cycles == 0 || diagnose == FanStatus::Halted) && diagnose != self.last_status {
             self.last_status = diagnose;
             Err(diagnose)
         } else {
@@ -126,9 +146,7 @@ impl<'a> FanCtrl<'a> {
         if self.fan_auto && self.available {
             let scaled_current = self.channels.current_abs_max_tec_i() / MAX_TEC_I;
             // do not limit upper bound, as it will be limited in the set_pwm()
-            let pwm = max_by(MAX_FAN_PWM * (scaled_current * (scaled_current * self.k_a + self.k_b) + self.k_c),
-                             MIN_FAN_PWM,
-                             |a, b| a.partial_cmp(b).unwrap_or(core::cmp::Ordering::Equal)) as u32;
+            let pwm = (MAX_USER_FAN_PWM * (scaled_current * (scaled_current * self.k_a + self.k_b) + self.k_c)) as u32;
             self.set_pwm(pwm);
         }
     }
@@ -139,7 +157,7 @@ impl<'a> FanCtrl<'a> {
     }
 
     #[inline]
-    pub fn set_coefficients(&mut self, k_a: f64, k_b: f64, k_c: f64) {
+    pub fn set_curve(&mut self, k_a: f64, k_b: f64, k_c: f64) {
         self.k_a = k_a;
         self.k_b = k_b;
         self.k_c = k_c;
@@ -148,28 +166,50 @@ impl<'a> FanCtrl<'a> {
     #[inline]
     pub fn restore_defaults(&mut self) {
         self.set_auto_mode(true);
-        self.set_coefficients(DEFAULT_K_A, DEFAULT_K_B, DEFAULT_K_C);
+        self.set_curve(DEFAULT_K_A, DEFAULT_K_B, DEFAULT_K_C);
     }
 
     pub fn set_pwm(&mut self, fan_pwm: u32) -> f64 {
-        let duty = fan_pwm as f64 / MAX_FAN_PWM;
+        let fan_pwm = fan_pwm.min(MAX_USER_FAN_PWM as u32).max(MIN_USER_FAN_PWM as u32);
+        self.skip_cycles = if (self.tacho.get() as f64) <= Self::threshold_for_pwm(fan_pwm as f64) {
+            TACHO_SKIP_CYCLES
+        } else { self.skip_cycles };
+        let duty = Self::scale_number(fan_pwm as f64, MIN_FAN_PWM, MAX_FAN_PWM, MIN_USER_FAN_PWM, MAX_USER_FAN_PWM);
         let max = self.fan.get_max_duty();
         let value = ((duty * (max as f64)) as u16).min(max);
         self.fan.set_duty(value);
         value as f64 / (max as f64)
     }
 
+    #[inline]
+    fn threshold_for_pwm(fan_pwm: f64) -> f64 {
+        (TACHO_REGRESSION_A * fan_pwm + TACHO_REGRESSION_B) * fan_pwm + TACHO_REGRESSION_C
+    }
+
+    #[inline]
+    fn scale_number(unscaled: f64, to_min: f64, to_max: f64, from_min: f64, from_max: f64) -> f64 {
+        (to_max - to_min) * (unscaled - from_min) / (from_max - from_min) + to_min
+    }
+
     fn diagnose(&mut self) -> FanStatus {
         if !self.available {
             return FanStatus::NotAvailable;
         }
-        self.tacho.diagnose()
+        let threshold = Self::threshold_for_pwm(self.get_pwm() as f64) as u32;
+        let tacho = self.tacho.get();
+        if tacho >= threshold {
+            FanStatus::OK
+        } else if tacho >= TACHO_HALT_THRESHOLD {
+            FanStatus::TooSlow
+        } else {
+            FanStatus::Halted
+        }
     }
 
     fn get_pwm(&self) -> u32 {
         let duty = self.fan.get_duty();
         let max = self.fan.get_max_duty();
-        ((duty as f64 / (max as f64)) * MAX_FAN_PWM) as u32
+        (Self::scale_number(duty as f64 / (max as f64), MIN_USER_FAN_PWM, MAX_USER_FAN_PWM, MIN_FAN_PWM, MAX_FAN_PWM) + 0.5) as u32
     }
 }
 
@@ -180,34 +220,24 @@ impl TachoCtrl {
             tacho_cnt: 0,
             tacho_value: None,
             prev_epoch: 0,
-            past_record: 0,
         }
     }
 
     fn init(&mut self, exti: &mut EXTI, syscfg: &mut SysCfg) {
         // These lines do not cause NVIC to run the ISR,
-        // since the interrupt should be unmasked in the cortex_m::peripheral::NVIC.
+        // since the interrupt is masked in the cortex_m::peripheral::NVIC.
         // Also using interrupt-related workaround is the best
         // option for the current version of stm32f4xx-hal,
-        // since tying the IC's PC8 with the PWM's PC9 to the same TIM8 is not supported,
-        // and therefore would require even more weirder and unsafe hacks.
-        // Also such hacks wouldn't guarantee it to be more precise.
+        // since tying the IC's PC8 with the PWM's PC9 to the same TIM8 is not supported.
+        // The possible solution would be to update the library to >=v0.14.*,
+        // and use its Timer's counter functionality.
         self.tacho.make_interrupt_source(syscfg);
         self.tacho.trigger_on_edge(exti, Edge::Rising);
         self.tacho.enable_interrupt(exti);
     }
 
-    #[inline]
-    fn add_record(&mut self, value: u32) {
-        self.past_record = self.past_record << 2;
-        if value >= TACHO_LOW_THRESHOLD {
-            self.past_record += 0b11;
-        } else if value > 0 && self.tacho_cnt < TACHO_LOW_THRESHOLD {
-            self.past_record += 0b10;
-        }
-    }
-
-    fn cycle(&mut self) {
+    // returns whether the epoch elapsed
+    fn cycle(&mut self) -> bool {
         let tacho_input = self.tacho.check_interrupt();
         if tacho_input {
             self.tacho.clear_interrupt_pending_bit();
@@ -217,24 +247,16 @@ impl TachoCtrl {
         let instant = Instant::from_millis(i64::from(timer::now()));
         if instant.millis - self.prev_epoch >= TACHO_MEASURE_MS {
             self.tacho_value = Some(self.tacho_cnt);
-            self.add_record(self.tacho_cnt);
             self.tacho_cnt = 0;
             self.prev_epoch = instant.millis;
+            true
+        } else {
+            false
         }
     }
 
     fn get(&self) -> u32 {
         self.tacho_value.unwrap_or(u32::MAX)
-    }
-
-    fn diagnose(&mut self) -> FanStatus {
-        if self.past_record & 0b11 == 0b11 {
-            FanStatus::OK
-        } else if self.past_record & 0xAAAAAAAAAAAAAAAA > 0 {
-            FanStatus::LowSignal
-        } else {
-            FanStatus::Stalled
-        }
     }
 }
 
@@ -272,8 +294,23 @@ impl FanStatus {
         match *self {
             FanStatus::OK => "Fan is OK".as_bytes(),
             FanStatus::NotAvailable => "Fan is not available".as_bytes(),
-            FanStatus::Stalled => "Fan is stalled".as_bytes(),
-            FanStatus::LowSignal => "Fan is low signal".as_bytes(),
+            FanStatus::TooSlow => "Fan is too slow".as_bytes(),
+            FanStatus::Halted => "Fan is halted".as_bytes(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_scaler() {
+        for x in 1..100 {
+            assert_eq!((FanCtrl::scale_number(
+                FanCtrl::scale_number(x as f64, MIN_FAN_PWM, MAX_FAN_PWM, MIN_USER_FAN_PWM, MAX_USER_FAN_PWM),
+                                              MIN_USER_FAN_PWM, MAX_USER_FAN_PWM, MIN_FAN_PWM, MAX_FAN_PWM) + 0.5) as i32,
+                       x);
         }
     }
 }

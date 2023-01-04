@@ -10,7 +10,6 @@ use panic_abort as _;
 use panic_semihosting as _;
 
 use log::{error, info, warn};
-use core::cell::RefCell;
 use cortex_m::asm::wfi;
 use cortex_m_rt::entry;
 use stm32f4xx_hal::{
@@ -140,20 +139,19 @@ fn main() -> ! {
 
     let mut store = flash_store::store(dp.FLASH);
 
-    let mut channels = RefCell::new(Channels::new(pins));
+    let mut channels = Channels::new(pins);
     for c in 0..CHANNELS {
         match store.read_value::<ChannelConfig>(CHANNEL_CONFIG_KEY[c]) {
             Ok(Some(config)) =>
-                config.apply(channels.get_mut(), c),
+                config.apply(&mut channels, c),
             Ok(None) =>
                 error!("flash config not found for channel {}", c),
             Err(e) =>
                 error!("unable to load config {} from flash: {:?}", c, e),
         }
     }
-    // considered safe since `channels` is being mutated in a single thread,
-    // while mutex would be excessive
-    let mut fan_ctrl = FanCtrl::new(fan, tacho, unsafe{ &mut *channels.as_ptr() }, &mut dp.EXTI, &mut dp.SYSCFG.constrain());
+
+    let mut fan_ctrl = FanCtrl::new(fan, tacho, channels, &mut dp.EXTI, &mut dp.SYSCFG.constrain());
 
     // default net config:
     let mut ipv4_config = Ipv4Config {
@@ -183,7 +181,7 @@ fn main() -> ! {
             loop {
                 let mut new_ipv4_config = None;
                 let instant = Instant::from_millis(i64::from(timer::now()));
-                let updated_channel = channels.get_mut().poll_adc(instant);
+                let updated_channel = fan_ctrl.channels.poll_adc(instant);
                 if let Some(channel) = updated_channel {
                     server.for_each(|_, session| session.set_report_pending(channel.into()));
                 }
@@ -213,7 +211,7 @@ fn main() -> ! {
                                 // Do nothing and feed more data to the line reader in the next loop cycle.
                                 Ok(SessionInput::Nothing) => {}
                                 Ok(SessionInput::Command(command)) => {
-                                    match Handler::handle_command(command, &mut socket, channels.get_mut(), session, &mut leds, &mut store, &mut ipv4_config, &mut fan_ctrl) {
+                                    match Handler::handle_command(command, &mut socket, session, &mut leds, &mut store, &mut ipv4_config, &mut fan_ctrl) {
                                         Ok(Handler::NewIPV4(ip)) => new_ipv4_config = Some(ip),                                
                                         Ok(Handler::Handled) => {},
                                         Ok(Handler::CloseSocket) => socket.close(),
@@ -230,7 +228,7 @@ fn main() -> ! {
                             }
                         } else if socket.can_send() {
                             if let Some(channel) = session.is_report_pending() {
-                                match channels.get_mut().reports_json() {
+                                match fan_ctrl.channels.reports_json() {
                                     Ok(buf) => {
                                         send_line(&mut socket, &buf[..]);
                                         session.mark_report_sent(channel);

@@ -182,7 +182,7 @@ pub enum Command {
     Fan {
         fan_pwm: Option<u32>
     },
-    FanCoeff {
+    FanCurve {
         k_a: f64,
         k_b: f64,
         k_c: f64,
@@ -546,9 +546,9 @@ fn fan(input: &[u8]) -> IResult<&[u8], Result<Command, Error>> {
     Ok((input, result))
 }
 
-fn fan_coeff(input: &[u8]) -> IResult<&[u8], Result<Command, Error>> {
+fn fan_curve(input: &[u8]) -> IResult<&[u8], Result<Command, Error>> {
     let (input, _) = tag("fcurve")(input)?;
-    let (input, coeffs) = alt((
+    let (input, curve) = alt((
         |input| {
             let (input, _) = whitespace(input)?;
             let (input, k_a) = float(input)?;
@@ -566,8 +566,8 @@ fn fan_coeff(input: &[u8]) -> IResult<&[u8], Result<Command, Error>> {
         value(None, end)
     ))(input)?;
 
-    let result = match coeffs {
-        Some(coeffs) => Ok(Command::FanCoeff { k_a: coeffs.0, k_b: coeffs.1, k_c: coeffs.2 }),
+    let result = match curve {
+        Some(curve) => Ok(Command::FanCurve { k_a: curve.0, k_b: curve.1, k_c: curve.2 }),
         None => Err(Error::ParseFloat)
     };
     Ok((input, result))
@@ -586,9 +586,9 @@ fn command(input: &[u8]) -> IResult<&[u8], Result<Command, Error>> {
          steinhart_hart,
          postfilter,
          value(Ok(Command::Dfu), tag("dfu")),
-         value(Ok(Command::FanDefaults), tag("fan-restore")),
+         value(Ok(Command::FanDefaults), tag("fcurve-restore")),
          fan,
-         fan_coeff,
+         fan_curve,
     ))(input)
 }
 

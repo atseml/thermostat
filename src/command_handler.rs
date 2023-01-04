@@ -342,7 +342,7 @@ impl Handler {
         Ok(Handler::Reset)
     }
 
-    fn fan (socket: &mut TcpSocket, fan_pwm: Option<u32>, fan_ctrl: &mut FanCtrl) -> Result<Handler, Error> {
+    fn fan(socket: &mut TcpSocket, fan_pwm: Option<u32>, fan_ctrl: &mut FanCtrl) -> Result<Handler, Error> {
         match fan_pwm {
             Some(val) => {
                 fan_ctrl.set_auto_mode(val == 0);
@@ -366,43 +366,43 @@ impl Handler {
         Ok(Handler::Handled)
     }
 
-    fn fan_coeff (socket: &mut TcpSocket, fan_ctrl: &mut FanCtrl, k_a: f64, k_b: f64, k_c: f64) -> Result<Handler, Error> {
-        fan_ctrl.set_coefficients(k_a, k_b, k_c);
+    fn fan_curve(socket: &mut TcpSocket, fan_ctrl: &mut FanCtrl, k_a: f64, k_b: f64, k_c: f64) -> Result<Handler, Error> {
+        fan_ctrl.set_curve(k_a, k_b, k_c);
         send_line(socket, b"{}");
         Ok(Handler::Handled)
     }
 
-    fn fan_defaults (socket: &mut TcpSocket, fan_ctrl: &mut FanCtrl) -> Result<Handler, Error> {
+    fn fan_defaults(socket: &mut TcpSocket, fan_ctrl: &mut FanCtrl) -> Result<Handler, Error> {
         fan_ctrl.restore_defaults();
         send_line(socket, b"{}");
         Ok(Handler::Handled)
     }
 
-    pub fn handle_command (command: Command, socket: &mut TcpSocket, channels: &mut Channels, session: &Session, leds: &mut Leds, store: &mut FlashStore, ipv4_config: &mut Ipv4Config, fan_ctrl: &mut FanCtrl) -> Result<Self, Error> {
+    pub fn handle_command(command: Command, socket: &mut TcpSocket, session: &Session, leds: &mut Leds, store: &mut FlashStore, ipv4_config: &mut Ipv4Config, fan_ctrl: &mut FanCtrl) -> Result<Self, Error> {
         match command {
             Command::Quit => Ok(Handler::CloseSocket),
             Command::Reporting(_reporting) => Handler::reporting(socket),            
             Command::Show(ShowCommand::Reporting) => Handler::show_report_mode(socket, session),            
-            Command::Show(ShowCommand::Input) => Handler::show_report(socket, channels),
-            Command::Show(ShowCommand::Pid) => Handler::show_pid(socket, channels),            
-            Command::Show(ShowCommand::Pwm) => Handler::show_pwm(socket, channels),
-            Command::Show(ShowCommand::SteinhartHart) => Handler::show_steinhart_hart(socket, channels),            
-            Command::Show(ShowCommand::PostFilter) => Handler::show_post_filter(socket, channels),            
+            Command::Show(ShowCommand::Input) => Handler::show_report(socket, &mut fan_ctrl.channels),
+            Command::Show(ShowCommand::Pid) => Handler::show_pid(socket, &mut fan_ctrl.channels),
+            Command::Show(ShowCommand::Pwm) => Handler::show_pwm(socket, &mut fan_ctrl.channels),
+            Command::Show(ShowCommand::SteinhartHart) => Handler::show_steinhart_hart(socket, &mut fan_ctrl.channels),
+            Command::Show(ShowCommand::PostFilter) => Handler::show_post_filter(socket, &mut fan_ctrl.channels),
             Command::Show(ShowCommand::Ipv4) => Handler::show_ipv4(socket, ipv4_config),
-            Command::PwmPid { channel } => Handler::engage_pid(socket, channels, leds, channel),
-            Command::Pwm { channel, pin, value } => Handler::set_pwm(socket, channels, leds, channel, pin, value),
-            Command::CenterPoint { channel, center } => Handler::set_center_point(socket, channels, channel, center),
-            Command::Pid { channel, parameter, value } => Handler::set_pid(socket, channels, channel, parameter, value),
-            Command::SteinhartHart { channel, parameter, value } => Handler::set_steinhart_hart(socket, channels, channel, parameter, value),
-            Command::PostFilter { channel, rate: None } => Handler::reset_post_filter(socket, channels, channel),
-            Command::PostFilter { channel, rate: Some(rate) } => Handler::set_post_filter(socket, channels, channel, rate),
-            Command::Load { channel } => Handler::load_channel(socket, channels, store, channel),
-            Command::Save { channel } => Handler::save_channel(socket, channels, channel, store),
+            Command::PwmPid { channel } => Handler::engage_pid(socket, &mut fan_ctrl.channels, leds, channel),
+            Command::Pwm { channel, pin, value } => Handler::set_pwm(socket, &mut fan_ctrl.channels, leds, channel, pin, value),
+            Command::CenterPoint { channel, center } => Handler::set_center_point(socket, &mut fan_ctrl.channels, channel, center),
+            Command::Pid { channel, parameter, value } => Handler::set_pid(socket, &mut fan_ctrl.channels, channel, parameter, value),
+            Command::SteinhartHart { channel, parameter, value } => Handler::set_steinhart_hart(socket, &mut fan_ctrl.channels, channel, parameter, value),
+            Command::PostFilter { channel, rate: None } => Handler::reset_post_filter(socket, &mut fan_ctrl.channels, channel),
+            Command::PostFilter { channel, rate: Some(rate) } => Handler::set_post_filter(socket, &mut fan_ctrl.channels, channel, rate),
+            Command::Load { channel } => Handler::load_channel(socket, &mut fan_ctrl.channels, store, channel),
+            Command::Save { channel } => Handler::save_channel(socket, &mut fan_ctrl.channels, channel, store),
             Command::Ipv4(config) => Handler::set_ipv4(socket, store, config),
-            Command::Reset => Handler::reset(channels),
-            Command::Dfu => Handler::dfu(channels),
+            Command::Reset => Handler::reset(&mut fan_ctrl.channels),
+            Command::Dfu => Handler::dfu(&mut fan_ctrl.channels),
             Command::Fan {fan_pwm} => Handler::fan(socket, fan_pwm, fan_ctrl),
-            Command::FanCoeff { k_a, k_b, k_c } => Handler::fan_coeff(socket, fan_ctrl, k_a, k_b, k_c),
+            Command::FanCurve { k_a, k_b, k_c } => Handler::fan_curve(socket, fan_ctrl, k_a, k_b, k_c),
             Command::FanDefaults => Handler::fan_defaults(socket, fan_ctrl),
         }
     }
