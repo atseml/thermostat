@@ -33,7 +33,7 @@ use stm32_eth::EthPins;
 use crate::{
     channel::{Channel0, Channel1},
     leds::Leds,
-    fan_ctrl::{TachoPin, FanPin}
+    fan_ctrl::FanPin
 };
 
 const PWM_FREQ: KiloHertz = KiloHertz(20u32);
@@ -131,7 +131,7 @@ impl Pins {
         spi2: SPI2, spi4: SPI4, spi5: SPI5,
         adc1: ADC1,
         otg_fs_global: OTG_FS_GLOBAL, otg_fs_device: OTG_FS_DEVICE, otg_fs_pwrclk: OTG_FS_PWRCLK,
-    ) -> (Self, Leds, Eeprom, EthernetPins, USB, FanPin, TachoPin) {
+    ) -> (Self, Leds, Eeprom, EthernetPins, USB, FanPin) {
         let gpioa = gpioa.split();
         let gpiob = gpiob.split();
         let gpioc = gpioc.split();
@@ -228,9 +228,9 @@ impl Pins {
             hclk: clocks.hclk(),
         };
 
-        let fan = Timer::new(tim8, &clocks).pwm(gpioc.pc9.into_alternate(), 20u32.khz());
+        let fan = Timer::new(tim8, &clocks).pwm(gpioc.pc9.into_alternate(), PWM_FREQ);
 
-        (pins, leds, eeprom, eth_pins, usb, fan, gpioc.pc8)
+        (pins, leds, eeprom, eth_pins, usb, fan)
     }
 
     /// Configure the GPIO pins for SPI operation, and initialize SPI
@@ -342,7 +342,7 @@ impl PwmPins {
         PwmPins {
             max_v0, max_v1,
             max_i_pos0, max_i_pos1,
-            max_i_neg0, max_i_neg1
+            max_i_neg0, max_i_neg1,
         }
     }
 }

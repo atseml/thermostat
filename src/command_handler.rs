@@ -342,7 +342,7 @@ impl Handler {
         Ok(Handler::Reset)
     }
 
-    fn fan(socket: &mut TcpSocket, fan_pwm: u32, fan_ctrl: &mut FanCtrl) -> Result<Handler, Error> {
+    fn set_fan(socket: &mut TcpSocket, fan_pwm: u32, fan_ctrl: &mut FanCtrl) -> Result<Handler, Error> {
         fan_ctrl.set_auto_mode(false);
         fan_ctrl.set_pwm(fan_pwm);
         send_line(socket, b"{}");
@@ -404,7 +404,7 @@ impl Handler {
             Command::Ipv4(config) => Handler::set_ipv4(socket, store, config),
             Command::Reset => Handler::reset(&mut fan_ctrl.channels),
             Command::Dfu => Handler::dfu(&mut fan_ctrl.channels),
-            Command::FanSet {fan_pwm} => Handler::fan(socket, fan_pwm, fan_ctrl),
+            Command::FanSet {fan_pwm} => Handler::set_fan(socket, fan_pwm, fan_ctrl),
             Command::ShowFan => Handler::show_fan(socket, fan_ctrl),
             Command::FanAuto => Handler::fan_auto(socket, fan_ctrl),
             Command::FanCurve { k_a, k_b, k_c } => Handler::fan_curve(socket, fan_ctrl, k_a, k_b, k_c),

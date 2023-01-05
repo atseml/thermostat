@@ -18,7 +18,6 @@ use stm32f4xx_hal::{
     stm32::{CorePeripherals, Peripherals, SCB},
     time::{U32Ext, MegaHertz},
     watchdog::IndependentWatchdog,
-    syscfg::SysCfgExt
 };
 use smoltcp::{
     time::Instant,
@@ -104,7 +103,7 @@ fn main() -> ! {
     cp.SCB.enable_icache();
     cp.SCB.enable_dcache(&mut cp.CPUID);
 
-    let mut dp = Peripherals::take().unwrap();
+    let dp = Peripherals::take().unwrap();
     let clocks = dp.RCC.constrain()
         .cfgr
         .use_hse(HSE)
@@ -120,7 +119,7 @@ fn main() -> ! {
 
     timer::setup(cp.SYST, clocks);
 
-    let (pins, mut leds, mut eeprom, eth_pins, usb, fan, tacho) = Pins::setup(
+    let (pins, mut leds, mut eeprom, eth_pins, usb, fan) = Pins::setup(
         clocks, dp.TIM1, dp.TIM3, dp.TIM8,
         dp.GPIOA, dp.GPIOB, dp.GPIOC, dp.GPIOD, dp.GPIOE, dp.GPIOF, dp.GPIOG,
         dp.I2C1,
@@ -151,7 +150,7 @@ fn main() -> ! {
         }
     }
 
-    let mut fan_ctrl = FanCtrl::new(fan, tacho, channels, &mut dp.EXTI, &mut dp.SYSCFG.constrain());
+    let mut fan_ctrl = FanCtrl::new(fan, channels);
 
     // default net config:
     let mut ipv4_config = Ipv4Config {
@@ -186,7 +185,7 @@ fn main() -> ! {
                     server.for_each(|_, session| session.set_report_pending(channel.into()));
                 }
 
-                let fan_status = fan_ctrl.cycle();
+                fan_ctrl.cycle();
 
                 let instant = Instant::from_millis(i64::from(timer::now()));
                 cortex_m::interrupt::free(net::clear_pending);
@@ -239,12 +238,6 @@ fn main() -> ! {
                                     }
                                 }
                             }
-                            match fan_status {
-                                Ok(_) => {}
-                                Err(status) => {
-                                    send_line(&mut socket, status.fmt_u8());
-                                }
-                            };
                         }
                     });
                 } else {

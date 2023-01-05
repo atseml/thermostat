@@ -125,9 +125,10 @@ formatted as line-delimited JSON.
 | `dfu`                            | Reset device and enters USB device firmware update (DFU) mode                 |
 | `ipv4 <X.X.X.X/L> [Y.Y.Y.Y]`     | Configure IPv4 address, netmask length, and optional default gateway          |
 | `fan`                            | Show current fan settings and sensors' measurements                           |
-| `fan <value>`                    | Set fan power with values from 0 to 100, where 0 is auto mode                 |
+| `fan <value>`                    | Set fan power with values from 1 to 100                                       |
+| `fan auto`                       | Enable automatic fan speed control                                            |
 | `fcurve <a> <b> <c>`             | Set fan controller curve coefficients (see *Fan control* section)             |
-| `fcurve-restore`                 | Set fan controller curve coefficients to defaults (see *Fan control* section) |
+| `fcurve default`                 | Set fan controller curve coefficients to defaults (see *Fan control* section) |
 
 
 ## USB
@@ -277,13 +278,11 @@ The thermostat implements a PID control loop for each of the TEC channels, more 
 ## Fan control
 
 Fan control is available for the thermostat revisions with integrated fan system. For this purpose four commands are available:
-1. `fan` - show fan stats: `fan_pwm`, `tacho`, `abs_max_tec_i`, `auto_mode`. Please note that `tacho` shows *approximate* value, which
-linearly correlates with the actual fan speed.
-2. `fan <value>` - set the fan power with the value from `0` to `100`. Since there is no hardware way to disable the fan,
-`0` value is used for enabling automatic fan control mode, which correlates with the square of the TEC's current. 
-Values from `1` to `100` are used for setting the power from minimum to maximum respectively.
+1. `fan` - show fan stats: `fan_pwm`, `abs_max_tec_i`, `auto_mode`, `k_a`, `k_b`, `k_c`.
+2. `fan auto` - enable auto speed controller mode, which correlates with the square of the TEC's current.
+3. `fan <value>` - set the fan power with the value from `1` to `100` and disable auto mode. There is no way to disable the fan.
 Please note that power doesn't correlate with the actual speed linearly.
-3. `fcurve <a> <b> <c>` - set coefficients of the controlling curve `a*x^2 + b*x + c`, where `x` is `abs_max_tec_i/MAX_TEC_I`, 
+4. `fcurve <a> <b> <c>` - set coefficients of the controlling curve `a*x^2 + b*x + c`, where `x` is `abs_max_tec_i/MAX_TEC_I`, 
 i.e. receives values from 0 to 1 linearly tied to the maximum current. The controlling curve should produce values from 0 to 1,
 as below and beyond values would be substituted by 0 and 1 respectively.
-4. `fcurve-restore` - restore fan settings to defaults: `auto = true, a = 1.0, b = 0.0, c = 0.00`.
+5. `fcurve default` - restore fan curve settings to defaults: `a = 1.0, b = 0.0, c = 0.0`.
