@@ -179,15 +179,17 @@ pub enum Command {
         rate: Option<f32>,
     },
     Dfu,
-    Fan {
-        fan_pwm: Option<u32>
+    FanSet {
+        fan_pwm: u32
     },
+    FanAuto,
+    ShowFan,
     FanCurve {
         k_a: f64,
         k_b: f64,
         k_c: f64,
     },
-    FanDefaults,
+    FanCurveDefaults,
 }
 
 fn end(input: &[u8]) -> IResult<&[u8], ()> {
@@ -532,45 +534,56 @@ fn ipv4(input: &[u8]) -> IResult<&[u8], Result<Command, Error>> {
 
 fn fan(input: &[u8]) -> IResult<&[u8], Result<Command, Error>> {
     let (input, _) = tag("fan")(input)?;
-    let (input, fan_pwm) = alt((
+    alt((
         |input| {
             let (input, _) = whitespace(input)?;
-            let (input, value) = unsigned(input)?;
-            let (input, _) = end(input)?;
-            Ok((input, Some(value.unwrap_or(0))))
-        },
-        value(None, end)
-    ))(input)?;
 
-    let result = Ok(Command::Fan { fan_pwm });
-    Ok((input, result))
+            let (input, result) = alt((
+                |input| {
+                    let (input, _) = tag("auto")(input)?;
+                    Ok((input, Ok(Command::FanAuto)))
+                },
+                |input| {
+                    let (input, value) = unsigned(input)?;
+                    Ok((input, Ok(Command::FanSet { fan_pwm: value.unwrap_or(0)})))
+                },
+            ))(input)?;
+            let (input, _) = end(input)?;
+            Ok((input, result))
+        },
+        value(Ok(Command::ShowFan), end)
+    ))(input)
 }
 
 fn fan_curve(input: &[u8]) -> IResult<&[u8], Result<Command, Error>> {
     let (input, _) = tag("fcurve")(input)?;
-    let (input, curve) = alt((
+    alt((
         |input| {
             let (input, _) = whitespace(input)?;
-            let (input, k_a) = float(input)?;
-            let (input, _) = whitespace(input)?;
-            let (input, k_b) = float(input)?;
-            let (input, _) = whitespace(input)?;
-            let (input, k_c) = float(input)?;
+            let (input, result) = alt((
+                |input| {
+                    let (input, _) = tag("default")(input)?;
+                    Ok((input, Ok(Command::FanCurveDefaults)))
+                },
+                |input| {
+                    let (input, k_a) = float(input)?;
+                    let (input, _) = whitespace(input)?;
+                    let (input, k_b) = float(input)?;
+                    let (input, _) = whitespace(input)?;
+                    let (input, k_c) = float(input)?;
+                    let (input, _) = end(input)?;
+                    if k_a.is_ok() && k_b.is_ok() && k_c.is_ok() {
+                        Ok((input, Ok(Command::FanCurve { k_a: k_a.unwrap(), k_b: k_b.unwrap(), k_c: k_c.unwrap() })))
+                    } else {
+                        Err(nom::Err::Incomplete(Needed::Size(3)))
+                    }
+                },
+            ))(input)?;
             let (input, _) = end(input)?;
-            if k_a.is_ok() && k_b.is_ok() && k_c.is_ok() {
-                Ok((input, Some((k_a.unwrap(), k_b.unwrap(), k_c.unwrap()))))
-            } else {
-                Err(nom::Err::Incomplete(Needed::Size(3)))
-            }
+            Ok((input, result))
         },
-        value(None, end)
-    ))(input)?;
-
-    let result = match curve {
-        Some(curve) => Ok(Command::FanCurve { k_a: curve.0, k_b: curve.1, k_c: curve.2 }),
-        None => Err(Error::ParseFloat)
-    };
-    Ok((input, result))
+        value(Err(Error::Incomplete), end)
+    ))(input)
 }
 
 fn command(input: &[u8]) -> IResult<&[u8], Result<Command, Error>> {
@@ -586,7 +599,6 @@ fn command(input: &[u8]) -> IResult<&[u8], Result<Command, Error>> {
          steinhart_hart,
          postfilter,
          value(Ok(Command::Dfu), tag("dfu")),
-         value(Ok(Command::FanDefaults), tag("fcurve-restore")),
          fan,
          fan_curve,
     ))(input)
@@ -809,5 +821,39 @@ mod test {
             channel: 1,
             center: CenterPoint::Vref,
         }));
+    }
+
+    #[test]
+    fn parse_fan_show() {
+        let command = Command::parse(b"fan");
+        assert_eq!(command, Ok(Command::ShowFan));
+    }
+
+    #[test]
+    fn parse_fan_set() {
+        let command = Command::parse(b"fan 42");
+        assert_eq!(command, Ok(Command::FanSet {fan_pwm: 42}));
+    }
+
+    #[test]
+    fn parse_fan_auto() {
+        let command = Command::parse(b"fan auto");
+        assert_eq!(command, Ok(Command::FanAuto));
+    }
+
+    #[test]
+    fn parse_fcurve_set() {
+        let command = Command::parse(b"fcurve 1.2 3.4 5.6");
+        assert_eq!(command, Ok(Command::FanCurve {
+            k_a: 1.2,
+            k_b: 3.4,
+            k_c: 5.6
+        }));
+    }
+
+    #[test]
+    fn parse_fcurve_default() {
+        let command = Command::parse(b"fcurve default");
+        assert_eq!(command, Ok(Command::FanCurveDefaults));
     }
 }

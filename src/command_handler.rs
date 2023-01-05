@@ -342,26 +342,29 @@ impl Handler {
         Ok(Handler::Reset)
     }
 
-    fn fan(socket: &mut TcpSocket, fan_pwm: Option<u32>, fan_ctrl: &mut FanCtrl) -> Result<Handler, Error> {
-        match fan_pwm {
-            Some(val) => {
-                fan_ctrl.set_auto_mode(val == 0);
-                fan_ctrl.set_pwm(val);
-            },
-            None => {
-                match fan_ctrl.summary() {
-                    Ok(buf) => {
-                        send_line(socket, &buf);
-                        return Ok(Handler::Handled);
-                    }
-                    Err(e) => {
-                        error!("unable to serialize fan summary: {:?}", e);
-                        let _ = writeln!(socket, "{{\"error\":\"{:?}\"}}", e);
-                        return Err(Error::ReportError);
-                    }
-                };
+    fn fan(socket: &mut TcpSocket, fan_pwm: u32, fan_ctrl: &mut FanCtrl) -> Result<Handler, Error> {
+        fan_ctrl.set_auto_mode(false);
+        fan_ctrl.set_pwm(fan_pwm);
+        send_line(socket, b"{}");
+        Ok(Handler::Handled)
+    }
+
+    fn show_fan(socket: &mut TcpSocket, fan_ctrl: &mut FanCtrl) -> Result<Handler, Error> {
+        match fan_ctrl.summary() {
+            Ok(buf) => {
+                send_line(socket, &buf);
+                Ok(Handler::Handled)
             }
-        };
+            Err(e) => {
+                error!("unable to serialize fan summary: {:?}", e);
+                let _ = writeln!(socket, "{{\"error\":\"{:?}\"}}", e);
+                Err(Error::ReportError)
+            }
+        }
+    }
+
+    fn fan_auto(socket: &mut TcpSocket, fan_ctrl: &mut FanCtrl) -> Result<Handler, Error> {
+        fan_ctrl.set_auto_mode(true);
         send_line(socket, b"{}");
         Ok(Handler::Handled)
     }
@@ -401,9 +404,11 @@ impl Handler {
             Command::Ipv4(config) => Handler::set_ipv4(socket, store, config),
             Command::Reset => Handler::reset(&mut fan_ctrl.channels),
             Command::Dfu => Handler::dfu(&mut fan_ctrl.channels),
-            Command::Fan {fan_pwm} => Handler::fan(socket, fan_pwm, fan_ctrl),
+            Command::FanSet {fan_pwm} => Handler::fan(socket, fan_pwm, fan_ctrl),
+            Command::ShowFan => Handler::show_fan(socket, fan_ctrl),
+            Command::FanAuto => Handler::fan_auto(socket, fan_ctrl),
             Command::FanCurve { k_a, k_b, k_c } => Handler::fan_curve(socket, fan_ctrl, k_a, k_b, k_c),
-            Command::FanDefaults => Handler::fan_defaults(socket, fan_ctrl),
+            Command::FanCurveDefaults => Handler::fan_defaults(socket, fan_ctrl),
         }
     }
 }
