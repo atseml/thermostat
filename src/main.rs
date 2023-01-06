@@ -150,7 +150,7 @@ fn main() -> ! {
         }
     }
 
-    let mut fan_ctrl = FanCtrl::new(fan, channels);
+    let mut fan_ctrl = FanCtrl::new(fan, &channels.hwrev);
 
     // default net config:
     let mut ipv4_config = Ipv4Config {
@@ -180,12 +180,12 @@ fn main() -> ! {
             loop {
                 let mut new_ipv4_config = None;
                 let instant = Instant::from_millis(i64::from(timer::now()));
-                let updated_channel = fan_ctrl.channels.poll_adc(instant);
+                let updated_channel = channels.poll_adc(instant);
                 if let Some(channel) = updated_channel {
                     server.for_each(|_, session| session.set_report_pending(channel.into()));
                 }
 
-                fan_ctrl.cycle();
+                fan_ctrl.cycle(channels.current_abs_max_tec_i());
 
                 let instant = Instant::from_millis(i64::from(timer::now()));
                 cortex_m::interrupt::free(net::clear_pending);
@@ -210,7 +210,7 @@ fn main() -> ! {
                                 // Do nothing and feed more data to the line reader in the next loop cycle.
                                 Ok(SessionInput::Nothing) => {}
                                 Ok(SessionInput::Command(command)) => {
-                                    match Handler::handle_command(command, &mut socket, session, &mut leds, &mut store, &mut ipv4_config, &mut fan_ctrl) {
+                                    match Handler::handle_command(command, &mut socket, &mut channels, session, &mut leds, &mut store, &mut ipv4_config, &mut fan_ctrl) {
                                         Ok(Handler::NewIPV4(ip)) => new_ipv4_config = Some(ip),                                
                                         Ok(Handler::Handled) => {},
                                         Ok(Handler::CloseSocket) => socket.close(),
@@ -227,7 +227,7 @@ fn main() -> ! {
                             }
                         } else if socket.can_send() {
                             if let Some(channel) = session.is_report_pending() {
-                                match fan_ctrl.channels.reports_json() {
+                                match channels.reports_json() {
                                     Ok(buf) => {
                                         send_line(&mut socket, &buf[..]);
                                         session.mark_report_sent(channel);

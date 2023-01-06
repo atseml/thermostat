@@ -26,7 +26,7 @@ use stm32f4xx_hal::{
         TIM1, TIM3, TIM8
     },
     timer::Timer,
-    time::{U32Ext, KiloHertz},
+    time::U32Ext,
 };
 use eeprom24x::{self, Eeprom24x};
 use stm32_eth::EthPins;
@@ -35,8 +35,6 @@ use crate::{
     leds::Leds,
     fan_ctrl::FanPin
 };
-
-const PWM_FREQ: KiloHertz = KiloHertz(20u32);
 
 pub type Eeprom = Eeprom24x<
     I2c<I2C1, (
@@ -228,7 +226,11 @@ impl Pins {
             hclk: clocks.hclk(),
         };
 
-        let fan = Timer::new(tim8, &clocks).pwm(gpioc.pc9.into_alternate(), PWM_FREQ);
+        // Though there is not enough evidence available for concrete fan model,
+        // it is generally advised to have higher PWM frequencies for brushless motors,
+        // so that it would produce less audible noise.
+        // Source: https://www.controleng.com/articles/understanding-the-effect-of-pwm-when-controlling-a-brushless-dc-motor/
+        let fan = Timer::new(tim8, &clocks).pwm(gpioc.pc9.into_alternate(), 80u32.khz());
 
         (pins, leds, eeprom, eth_pins, usb, fan)
     }
@@ -312,6 +314,7 @@ impl PwmPins {
         max_i_neg0: PE13<M5>,
         max_i_neg1: PE14<M6>,
     ) -> PwmPins {
+        let freq = 20u32.khz();
 
         fn init_pwm_pin<P: hal::PwmPin<Duty=u16>>(pin: &mut P) {
             pin.set_duty(0);
@@ -321,8 +324,8 @@ impl PwmPins {
             max_v0.into_alternate(),
             max_v1.into_alternate(),
         );
-        //let (mut max_v0, mut max_v1) = pwm::tim3(tim3, channels, clocks, PWM_FREQ);
-        let (mut max_v0, mut max_v1) = Timer::new(tim3, &clocks).pwm(channels, PWM_FREQ);
+        //let (mut max_v0, mut max_v1) = pwm::tim3(tim3, channels, clocks, freq);
+        let (mut max_v0, mut max_v1) = Timer::new(tim3, &clocks).pwm(channels, freq);
         init_pwm_pin(&mut max_v0);
         init_pwm_pin(&mut max_v1);
 
@@ -333,7 +336,7 @@ impl PwmPins {
             max_i_neg1.into_alternate(),
         );
         let (mut max_i_pos0, mut max_i_pos1, mut max_i_neg0, mut max_i_neg1) =
-            Timer::new(tim1, &clocks).pwm(channels, PWM_FREQ);
+            Timer::new(tim1, &clocks).pwm(channels, freq);
         init_pwm_pin(&mut max_i_pos0);
         init_pwm_pin(&mut max_i_neg0);
         init_pwm_pin(&mut max_i_pos1);

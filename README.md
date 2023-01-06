@@ -279,7 +279,7 @@ The thermostat implements a PID control loop for each of the TEC channels, more 
 
 Fan control is available for the thermostat revisions with integrated fan system. For this purpose four commands are available:
 1. `fan` - show fan stats: `fan_pwm`, `abs_max_tec_i`, `auto_mode`, `k_a`, `k_b`, `k_c`.
-2. `fan auto` - enable auto speed controller mode, which correlates with the square of the TEC's current.
+2. `fan auto` - enable auto speed controller mode, which correlates with fan curve `fcurve`.
 3. `fan <value>` - set the fan power with the value from `1` to `100` and disable auto mode. There is no way to disable the fan.
 Please note that power doesn't correlate with the actual speed linearly.
 4. `fcurve <a> <b> <c>` - set coefficients of the controlling curve `a*x^2 + b*x + c`, where `x` is `abs_max_tec_i/MAX_TEC_I`, 
