@@ -18,8 +18,8 @@ const MAX_TEC_I: f64 = 3.0;
 const MAX_USER_FAN_PWM: f64 = 100.0;
 const MIN_USER_FAN_PWM: f64 = 1.0;
 const MAX_FAN_PWM: f64 = 1.0;
-// below this value motor circuit assumes there is no signal and runs full speed
-const MIN_FAN_PWM: f64 = 0.02;
+// below this value motor's autostart feature may fail
+const MIN_FAN_PWM: f64 = 0.04;
 
 const DEFAULT_K_A: f64 = 1.0;
 const DEFAULT_K_B: f64 = 0.0;

@@ -226,11 +226,9 @@ impl Pins {
             hclk: clocks.hclk(),
         };
 
-        // Though there is not enough evidence available for concrete fan model,
-        // it is generally advised to have higher PWM frequencies for brushless motors,
-        // so that it would produce less audible noise.
-        // Source: https://www.controleng.com/articles/understanding-the-effect-of-pwm-when-controlling-a-brushless-dc-motor/
-        let fan = Timer::new(tim8, &clocks).pwm(gpioc.pc9.into_alternate(), 80u32.khz());
+        // According to `SUNON DC Brushless Fan & Blower(255-E)` catalogue p.36-37
+        // Model name: MF35101V1-1000U-G99
+        let fan = Timer::new(tim8, &clocks).pwm(gpioc.pc9.into_alternate(), 25u32.khz());
 
         (pins, leds, eeprom, eth_pins, usb, fan)
     }
