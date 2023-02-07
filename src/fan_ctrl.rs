@@ -54,7 +54,9 @@ impl FanCtrl {
         FanCtrl {
             fan,
             available,
-            fan_auto: true,
+            // do not enable auto mode by default,
+            // but allow to turn it on on customer's own risk
+            fan_auto: hwrev.fan_auto_mode_available(),
             k_a: DEFAULT_K_A,
             k_b: DEFAULT_K_B,
             k_c: DEFAULT_K_C,
@@ -141,6 +143,12 @@ impl HWRev {
 
     pub fn fan_available(&self) -> bool {
         self.major == 2 && self.minor == 2
+    }
+
+    pub fn fan_auto_mode_available(&self) -> bool {
+        // see https://github.com/sinara-hw/Thermostat/issues/115 and
+        // https://git.m-labs.hk/M-Labs/thermostat/issues/69#issuecomment-6464 for explanation
+        self.fan_available() && self.minor != 2
     }
 }
 
