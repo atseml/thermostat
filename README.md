@@ -129,6 +129,7 @@ formatted as line-delimited JSON.
 | `fan auto`                       | Enable automatic fan speed control                                            |
 | `fcurve <a> <b> <c>`             | Set fan controller curve coefficients (see *Fan control* section)             |
 | `fcurve default`                 | Set fan controller curve coefficients to defaults (see *Fan control* section) |
+| `hwrev`                          | Show hardware revision                                                        |
 
 
 ## USB

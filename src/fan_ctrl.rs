@@ -6,65 +6,62 @@ use stm32f4xx_hal::{
 };
 
 use crate::{
-    pins::HWRevPins,
-    channels::JsonBuffer,
+    hw_rev::HWRev,
+    command_handler::JsonBuffer,
 };
 
 pub type FanPin = PwmChannels<TIM8, pwm::C4>;
 
 // as stated in the schematics
-const MAX_TEC_I: f64 = 3.0;
+const MAX_TEC_I: f32 = 3.0;
 
-const MAX_USER_FAN_PWM: f64 = 100.0;
-const MIN_USER_FAN_PWM: f64 = 1.0;
-const MAX_FAN_PWM: f64 = 1.0;
+const MAX_USER_FAN_PWM: f32 = 100.0;
+const MIN_USER_FAN_PWM: f32 = 1.0;
+const MAX_FAN_PWM: f32 = 1.0;
 // below this value motor's autostart feature may fail
-const MIN_FAN_PWM: f64 = 0.04;
+const MIN_FAN_PWM: f32 = 0.04;
 
-const DEFAULT_K_A: f64 = 1.0;
-const DEFAULT_K_B: f64 = 0.0;
-const DEFAULT_K_C: f64 = 0.0;
-
-
-#[derive(Serialize, Copy, Clone)]
-pub struct HWRev {
-    pub major: u8,
-    pub minor: u8,
-}
+const DEFAULT_K_A: f32 = 1.0;
+const DEFAULT_K_B: f32 = 0.0;
+const DEFAULT_K_C: f32 = 0.0;
 
 pub struct FanCtrl {
     fan: FanPin,
     fan_auto: bool,
     available: bool,
-    k_a: f64,
-    k_b: f64,
-    k_c: f64,
-    abs_max_tec_i: f64,
+    default_auto: bool,
+    pwm_enabled: bool,
+    k_a: f32,
+    k_b: f32,
+    k_c: f32,
+    abs_max_tec_i: f32,
 }
 
 impl FanCtrl {
-    pub fn new(mut fan: FanPin, hwrev: &HWRev) -> Self {
+    pub fn new(fan: FanPin, hwrev: HWRev) -> Self {
         let available = hwrev.fan_available();
+        let default_auto = hwrev.fan_default_auto();
 
-        if available {
-            fan.set_duty(0);
-            fan.enable();
-        }
-
-        FanCtrl {
+        let mut fan_ctrl = FanCtrl {
             fan,
             available,
             // do not enable auto mode by default,
-            // but allow to turn it on on customer's own risk
-            fan_auto: hwrev.fan_auto_mode_available(),
+            // but allow to turn it on on user's own risk
+            default_auto,
+            fan_auto: default_auto,
+            pwm_enabled: false,
             k_a: DEFAULT_K_A,
             k_b: DEFAULT_K_B,
             k_c: DEFAULT_K_C,
-            abs_max_tec_i: 0f64,
+            abs_max_tec_i: 0f32,
+        };
+        if fan_ctrl.fan_auto {
+            fan_ctrl.enable_pwm();
         }
+        fan_ctrl
     }
 
-    pub fn cycle(&mut self, abs_max_tec_i: f64) {
+    pub fn cycle(&mut self, abs_max_tec_i: f32) {
         self.abs_max_tec_i = abs_max_tec_i;
         self.adjust_speed();
     }
@@ -99,7 +96,7 @@ impl FanCtrl {
         self.fan_auto = fan_auto;
     }
 
-    pub fn set_curve(&mut self, k_a: f64, k_b: f64, k_c: f64) {
+    pub fn set_curve(&mut self, k_a: f32, k_b: f32, k_c: f32) {
         self.k_a = k_a;
         self.k_b = k_b;
         self.k_c = k_c;
@@ -109,55 +106,47 @@ impl FanCtrl {
         self.set_curve(DEFAULT_K_A, DEFAULT_K_B, DEFAULT_K_C);
     }
 
-    pub fn set_pwm(&mut self, fan_pwm: u32) -> f64 {
+    pub fn set_pwm(&mut self, fan_pwm: u32) -> f32 {
+        if !self.pwm_enabled {
+            self.enable_pwm()
+        }
         let fan_pwm = fan_pwm.min(MAX_USER_FAN_PWM as u32).max(MIN_USER_FAN_PWM as u32);
-        let duty = Self::scale_number(fan_pwm as f64, MIN_FAN_PWM, MAX_FAN_PWM, MIN_USER_FAN_PWM, MAX_USER_FAN_PWM);
+        let duty = Self::scale_number(fan_pwm as f32, MIN_FAN_PWM, MAX_FAN_PWM, MIN_USER_FAN_PWM, MAX_USER_FAN_PWM);
         let max = self.fan.get_max_duty();
-        let value = ((duty * (max as f64)) as u16).min(max);
+        let value = ((duty * (max as f32)) as u16).min(max);
         self.fan.set_duty(value);
-        value as f64 / (max as f64)
+        value as f32 / (max as f32)
     }
 
-    fn scale_number(unscaled: f64, to_min: f64, to_max: f64, from_min: f64, from_max: f64) -> f64 {
+    pub fn is_default_auto(&self) -> bool {
+        self.default_auto
+    }
+
+    fn scale_number(unscaled: f32, to_min: f32, to_max: f32, from_min: f32, from_max: f32) -> f32 {
         (to_max - to_min) * (unscaled - from_min) / (from_max - from_min) + to_min
     }
 
     fn get_pwm(&self) -> u32 {
         let duty = self.fan.get_duty();
         let max = self.fan.get_max_duty();
-        Self::scale_number(duty as f64 / (max as f64), MIN_USER_FAN_PWM, MAX_USER_FAN_PWM, MIN_FAN_PWM, MAX_FAN_PWM).round() as u32
+        Self::scale_number(duty as f32 / (max as f32), MIN_USER_FAN_PWM, MAX_USER_FAN_PWM, MIN_FAN_PWM, MAX_FAN_PWM).round() as u32
     }
-}
 
-impl HWRev {
-    pub fn detect_hw_rev(hwrev_pins: &HWRevPins) -> Self {
-        let (h0, h1, h2, h3) = (hwrev_pins.hwrev0.is_high(), hwrev_pins.hwrev1.is_high(),
-                                hwrev_pins.hwrev2.is_high(), hwrev_pins.hwrev3.is_high());
-        match (h0, h1, h2, h3) {
-            (true, true, true, false) => HWRev { major: 1, minor: 0 },
-            (true, false, false, false) => HWRev { major: 2, minor: 0 },
-            (false, true, false, false) => HWRev { major: 2, minor: 2 },
-            (_, _, _, _) => HWRev { major: 0, minor: 0 }
+    fn enable_pwm(&mut self) {
+        if self.available {
+            self.fan.set_duty(0);
+            self.fan.enable();
+            self.pwm_enabled = true;
         }
-    }
-
-    pub fn fan_available(&self) -> bool {
-        self.major == 2 && self.minor == 2
-    }
-
-    pub fn fan_auto_mode_available(&self) -> bool {
-        // see https://github.com/sinara-hw/Thermostat/issues/115 and
-        // https://git.m-labs.hk/M-Labs/thermostat/issues/69#issuecomment-6464 for explanation
-        self.fan_available() && self.minor != 2
     }
 }
 
 #[derive(Serialize)]
 pub struct FanSummary {
     fan_pwm: u32,
-    abs_max_tec_i: f64,
+    abs_max_tec_i: f32,
     auto_mode: bool,
-    k_a: f64,
-    k_b: f64,
-    k_c: f64,
+    k_a: f32,
+    k_b: f32,
+    k_c: f32,
 }

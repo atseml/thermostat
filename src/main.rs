@@ -55,6 +55,8 @@ mod command_handler;
 use command_handler::Handler;
 mod fan_ctrl;
 use fan_ctrl::FanCtrl;
+mod hw_rev;
+use hw_rev::HWRev;
 
 const HSE: MegaHertz = MegaHertz(8);
 #[cfg(not(feature = "semihosting"))]
@@ -138,6 +140,8 @@ fn main() -> ! {
 
     let mut store = flash_store::store(dp.FLASH);
 
+    let hwrev = HWRev::detect_hw_rev(&pins.hwrev);
+
     let mut channels = Channels::new(pins);
     for c in 0..CHANNELS {
         match store.read_value::<ChannelConfig>(CHANNEL_CONFIG_KEY[c]) {
@@ -150,7 +154,7 @@ fn main() -> ! {
         }
     }
 
-    let mut fan_ctrl = FanCtrl::new(fan, &channels.hwrev);
+    let mut fan_ctrl = FanCtrl::new(fan, hwrev);
 
     // default net config:
     let mut ipv4_config = Ipv4Config {
@@ -185,7 +189,7 @@ fn main() -> ! {
                     server.for_each(|_, session| session.set_report_pending(channel.into()));
                 }
 
-                fan_ctrl.cycle(channels.current_abs_max_tec_i());
+                fan_ctrl.cycle(channels.current_abs_max_tec_i() as f32);
 
                 let instant = Instant::from_millis(i64::from(timer::now()));
                 cortex_m::interrupt::free(net::clear_pending);
@@ -210,7 +214,7 @@ fn main() -> ! {
                                 // Do nothing and feed more data to the line reader in the next loop cycle.
                                 Ok(SessionInput::Nothing) => {}
                                 Ok(SessionInput::Command(command)) => {
-                                    match Handler::handle_command(command, &mut socket, &mut channels, session, &mut leds, &mut store, &mut ipv4_config, &mut fan_ctrl) {
+                                    match Handler::handle_command(command, &mut socket, &mut channels, session, &mut leds, &mut store, &mut ipv4_config, &mut fan_ctrl, hwrev) {
                                         Ok(Handler::NewIPV4(ip)) => new_ipv4_config = Some(ip),                                
                                         Ok(Handler::Handled) => {},
                                         Ok(Handler::CloseSocket) => socket.close(),

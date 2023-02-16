@@ -227,7 +227,8 @@ impl Pins {
         };
 
         // According to `SUNON DC Brushless Fan & Blower(255-E)` catalogue p.36-37
-        // Model name: MF35101V1-1000U-G99
+        // model MF35101V1-1000U-G99 doesn't have a PWM wire, so it is advised to have
+        // higher frequency to have less audible noise.
         let fan = Timer::new(tim8, &clocks).pwm(gpioc.pc9.into_alternate(), 25u32.khz());
 
         (pins, leds, eeprom, eth_pins, usb, fan)

@@ -1,6 +1,7 @@
 use smoltcp::socket::TcpSocket;
 use log::{error, warn};
 use core::fmt::Write;
+use heapless::{consts::U1024, Vec};
 use super::{
     net,
     command_parser::{
@@ -24,6 +25,7 @@ use super::{
     flash_store::FlashStore,
     session::Session,
     FanCtrl,
+    hw_rev::HWRev,
 };
 
 use uom::{
@@ -55,6 +57,8 @@ pub enum Error {
     PostFilterRateError,
     FlashError
 }
+
+pub type JsonBuffer = Vec<u8, U1024>;
 
 fn send_line(socket: &mut TcpSocket, data: &[u8]) -> bool {
     let send_free = socket.send_capacity() - socket.send_queue();
@@ -345,7 +349,11 @@ impl Handler {
     fn set_fan(socket: &mut TcpSocket, fan_pwm: u32, fan_ctrl: &mut FanCtrl) -> Result<Handler, Error> {
         fan_ctrl.set_auto_mode(false);
         fan_ctrl.set_pwm(fan_pwm);
-        send_line(socket, b"{}");
+        if fan_ctrl.is_default_auto() {
+            send_line(socket, b"{}");
+        } else {
+            send_line(socket, b"{ \"warning\": \"this fan doesn't have full PWM support. Use it on your own risk!\" }");
+        }
         Ok(Handler::Handled)
     }
 
@@ -365,11 +373,15 @@ impl Handler {
 
     fn fan_auto(socket: &mut TcpSocket, fan_ctrl: &mut FanCtrl) -> Result<Handler, Error> {
         fan_ctrl.set_auto_mode(true);
-        send_line(socket, b"{}");
+        if fan_ctrl.is_default_auto() {
+            send_line(socket, b"{}");
+        } else {
+            send_line(socket, b"{ \"warning\": \"this fan doesn't have full PWM support. Use it on your own risk!\" }");
+        }
         Ok(Handler::Handled)
     }
 
-    fn fan_curve(socket: &mut TcpSocket, fan_ctrl: &mut FanCtrl, k_a: f64, k_b: f64, k_c: f64) -> Result<Handler, Error> {
+    fn fan_curve(socket: &mut TcpSocket, fan_ctrl: &mut FanCtrl, k_a: f32, k_b: f32, k_c: f32) -> Result<Handler, Error> {
         fan_ctrl.set_curve(k_a, k_b, k_c);
         send_line(socket, b"{}");
         Ok(Handler::Handled)
@@ -381,7 +393,21 @@ impl Handler {
         Ok(Handler::Handled)
     }
 
-    pub fn handle_command(command: Command, socket: &mut TcpSocket, channels: &mut Channels, session: &Session, leds: &mut Leds, store: &mut FlashStore, ipv4_config: &mut Ipv4Config, fan_ctrl: &mut FanCtrl) -> Result<Self, Error> {
+    fn show_hwrev(socket: &mut TcpSocket, hwrev: HWRev) -> Result<Handler, Error> {
+        match hwrev.summary() {
+            Ok(buf) => {
+                send_line(socket, &buf);
+                Ok(Handler::Handled)
+            }
+            Err(e) => {
+                error!("unable to serialize HWRev summary: {:?}", e);
+                let _ = writeln!(socket, "{{\"error\":\"{:?}\"}}", e);
+                Err(Error::ReportError)
+            }
+        }
+    }
+
+    pub fn handle_command(command: Command, socket: &mut TcpSocket, channels: &mut Channels, session: &Session, leds: &mut Leds, store: &mut FlashStore, ipv4_config: &mut Ipv4Config, fan_ctrl: &mut FanCtrl, hwrev: HWRev) -> Result<Self, Error> {
         match command {
             Command::Quit => Ok(Handler::CloseSocket),
             Command::Reporting(_reporting) => Handler::reporting(socket),            
@@ -409,6 +435,7 @@ impl Handler {
             Command::FanAuto => Handler::fan_auto(socket, fan_ctrl),
             Command::FanCurve { k_a, k_b, k_c } => Handler::fan_curve(socket, fan_ctrl, k_a, k_b, k_c),
             Command::FanCurveDefaults => Handler::fan_defaults(socket, fan_ctrl),
+            Command::ShowHWRev => Handler::show_hwrev(socket, hwrev),
         }
     }
 }

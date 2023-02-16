@@ -1,5 +1,5 @@
 use core::cmp::max_by;
-use heapless::{consts::{U2, U1024}, Vec};
+use heapless::{consts::U2, Vec};
 use serde::{Serialize, Serializer};
 use smoltcp::time::Instant;
 use stm32f4xx_hal::hal;
@@ -17,9 +17,9 @@ use crate::{
     channel::{Channel, Channel0, Channel1},
     channel_state::ChannelState,
     command_parser::{CenterPoint, PwmPin},
+    command_handler::JsonBuffer,
     pins,
     steinhart_hart,
-    fan_ctrl::HWRev,
 };
 
 pub const CHANNELS: usize = 2;
@@ -35,7 +35,6 @@ pub struct Channels {
     /// stm32f4 integrated adc
     pins_adc: pins::PinsAdc,
     pub pwm: pins::PwmPins,
-    pub hwrev: HWRev,
 }
 
 impl Channels {
@@ -57,8 +56,7 @@ impl Channels {
         let channel1 = Channel::new(pins.channel1, adc_calibration1);
         let pins_adc = pins.pins_adc;
         let pwm = pins.pwm;
-        let mut channels = Channels { channel0, channel1, adc, pins_adc, pwm,
-            hwrev: HWRev::detect_hw_rev(&pins.hwrev)};
+        let mut channels = Channels { channel0, channel1, adc, pins_adc, pwm };
         for channel in 0..CHANNELS {
             channels.channel_state(channel).vref = channels.read_vref(channel);
             channels.calibrate_dac_value(channel);
@@ -458,7 +456,6 @@ impl Channels {
             tec_i,
             tec_u_meas: self.get_tec_v(channel),
             pid_output,
-            hwrev: self.hwrev
         }
     }
 
@@ -531,8 +528,6 @@ impl Channels {
     }
 }
 
-pub type JsonBuffer = Vec<u8, U1024>;
-
 #[derive(Serialize)]
 pub struct Report {
     channel: usize,
@@ -550,7 +545,6 @@ pub struct Report {
     tec_i: ElectricCurrent,
     tec_u_meas: ElectricPotential,
     pid_output: ElectricCurrent,
-    hwrev: HWRev,
 }
 
 pub struct CenterPointJson(CenterPoint);

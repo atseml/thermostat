@@ -185,11 +185,12 @@ pub enum Command {
     FanAuto,
     ShowFan,
     FanCurve {
-        k_a: f64,
-        k_b: f64,
-        k_c: f64,
+        k_a: f32,
+        k_b: f32,
+        k_c: f32,
     },
     FanCurveDefaults,
+    ShowHWRev,
 }
 
 fn end(input: &[u8]) -> IResult<&[u8], ()> {
@@ -573,7 +574,7 @@ fn fan_curve(input: &[u8]) -> IResult<&[u8], Result<Command, Error>> {
                     let (input, k_c) = float(input)?;
                     let (input, _) = end(input)?;
                     if k_a.is_ok() && k_b.is_ok() && k_c.is_ok() {
-                        Ok((input, Ok(Command::FanCurve { k_a: k_a.unwrap(), k_b: k_b.unwrap(), k_c: k_c.unwrap() })))
+                        Ok((input, Ok(Command::FanCurve { k_a: k_a.unwrap() as f32, k_b: k_b.unwrap() as f32, k_c: k_c.unwrap() as f32 })))
                     } else {
                         Err(nom::Err::Incomplete(Needed::Size(3)))
                     }
@@ -601,6 +602,7 @@ fn command(input: &[u8]) -> IResult<&[u8], Result<Command, Error>> {
          value(Ok(Command::Dfu), tag("dfu")),
          fan,
          fan_curve,
+         value(Ok(Command::ShowHWRev), tag("hwrev")),
     ))(input)
 }
 
@@ -855,5 +857,11 @@ mod test {
     fn parse_fcurve_default() {
         let command = Command::parse(b"fcurve default");
         assert_eq!(command, Ok(Command::FanCurveDefaults));
+    }
+
+    #[test]
+    fn parse_hwrev() {
+        let command = Command::parse(b"hwrev");
+        assert_eq!(command, Ok(Command::ShowHWRev));
     }
 }
