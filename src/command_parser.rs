@@ -549,7 +549,6 @@ fn fan(input: &[u8]) -> IResult<&[u8], Result<Command, Error>> {
                     Ok((input, Ok(Command::FanSet { fan_pwm: value.unwrap_or(0)})))
                 },
             ))(input)?;
-            let (input, _) = end(input)?;
             Ok((input, result))
         },
         value(Ok(Command::ShowFan), end)
@@ -572,7 +571,6 @@ fn fan_curve(input: &[u8]) -> IResult<&[u8], Result<Command, Error>> {
                     let (input, k_b) = float(input)?;
                     let (input, _) = whitespace(input)?;
                     let (input, k_c) = float(input)?;
-                    let (input, _) = end(input)?;
                     if k_a.is_ok() && k_b.is_ok() && k_c.is_ok() {
                         Ok((input, Ok(Command::FanCurve { k_a: k_a.unwrap() as f32, k_b: k_b.unwrap() as f32, k_c: k_c.unwrap() as f32 })))
                     } else {
@@ -580,7 +578,6 @@ fn fan_curve(input: &[u8]) -> IResult<&[u8], Result<Command, Error>> {
                     }
                 },
             ))(input)?;
-            let (input, _) = end(input)?;
             Ok((input, result))
         },
         value(Err(Error::Incomplete), end)

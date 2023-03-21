@@ -347,12 +347,16 @@ impl Handler {
     }
 
     fn set_fan(socket: &mut TcpSocket, fan_pwm: u32, fan_ctrl: &mut FanCtrl) -> Result<Handler, Error> {
+        if !fan_ctrl.fan_available() {
+            send_line(socket, b"{ \"warning\": \"this thermostat doesn't have fan!\" }");
+            return Ok(Handler::Handled);
+        }
         fan_ctrl.set_auto_mode(false);
         fan_ctrl.set_pwm(fan_pwm);
-        if fan_ctrl.is_default_auto() {
+        if fan_ctrl.fan_pwm_recommended() {
             send_line(socket, b"{}");
         } else {
-            send_line(socket, b"{ \"warning\": \"this fan doesn't have full PWM support. Use it on your own risk!\" }");
+            send_line(socket, b"{ \"warning\": \"this fan doesn't have full PWM support. Use it at your own risk!\" }");
         }
         Ok(Handler::Handled)
     }
@@ -372,11 +376,15 @@ impl Handler {
     }
 
     fn fan_auto(socket: &mut TcpSocket, fan_ctrl: &mut FanCtrl) -> Result<Handler, Error> {
+        if !fan_ctrl.fan_available() {
+            send_line(socket, b"{ \"warning\": \"this thermostat doesn't have fan!\" }");
+            return Ok(Handler::Handled);
+        }
         fan_ctrl.set_auto_mode(true);
-        if fan_ctrl.is_default_auto() {
+        if fan_ctrl.fan_pwm_recommended() {
             send_line(socket, b"{}");
         } else {
-            send_line(socket, b"{ \"warning\": \"this fan doesn't have full PWM support. Use it on your own risk!\" }");
+            send_line(socket, b"{ \"warning\": \"this fan doesn't have full PWM support. Use it at your own risk!\" }");
         }
         Ok(Handler::Handled)
     }

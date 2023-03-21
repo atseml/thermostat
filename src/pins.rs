@@ -33,7 +33,8 @@ use stm32_eth::EthPins;
 use crate::{
     channel::{Channel0, Channel1},
     leds::Leds,
-    fan_ctrl::FanPin
+    fan_ctrl::FanPin,
+    hw_rev::{HWRev, HWSettings},
 };
 
 pub type Eeprom = Eeprom24x<
@@ -116,7 +117,6 @@ pub struct Pins {
     pub pwm: PwmPins,
     pub channel0: ChannelPinSet<Channel0>,
     pub channel1: ChannelPinSet<Channel1>,
-    pub hwrev: HWRevPins
 }
 
 impl Pins {
@@ -129,7 +129,7 @@ impl Pins {
         spi2: SPI2, spi4: SPI4, spi5: SPI5,
         adc1: ADC1,
         otg_fs_global: OTG_FS_GLOBAL, otg_fs_device: OTG_FS_DEVICE, otg_fs_pwrclk: OTG_FS_PWRCLK,
-    ) -> (Self, Leds, Eeprom, EthernetPins, USB, FanPin) {
+    ) -> (Self, Leds, Eeprom, EthernetPins, USB, Option<FanPin>, HWRev, HWSettings) {
         let gpioa = gpioa.split();
         let gpiob = gpiob.split();
         let gpioc = gpioc.split();
@@ -196,9 +196,11 @@ impl Pins {
             pwm,
             channel0,
             channel1,
-            hwrev: HWRevPins {hwrev0: gpiod.pd0, hwrev1: gpiod.pd1,
-                hwrev2: gpiod.pd2, hwrev3: gpiod.pd3}
         };
+
+        let hwrev = HWRev::detect_hw_rev(&HWRevPins {hwrev0: gpiod.pd0, hwrev1: gpiod.pd1,
+            hwrev2: gpiod.pd2, hwrev3: gpiod.pd3});
+        let hw_settings = hwrev.settings();
 
         let leds = Leds::new(gpiod.pd9, gpiod.pd10.into_push_pull_output(), gpiod.pd11.into_push_pull_output());
 
@@ -226,12 +228,11 @@ impl Pins {
             hclk: clocks.hclk(),
         };
 
-        // According to `SUNON DC Brushless Fan & Blower(255-E)` catalogue p.36-37
-        // model MF35101V1-1000U-G99 doesn't have a PWM wire, so it is advised to have
-        // higher frequency to have less audible noise.
-        let fan = Timer::new(tim8, &clocks).pwm(gpioc.pc9.into_alternate(), 25u32.khz());
+        let fan = if hw_settings.fan_available {
+             Some(Timer::new(tim8, &clocks).pwm(gpioc.pc9.into_alternate(), hw_settings.fan_pwm_freq_hz.hz()))
+        } else { None };
 
-        (pins, leds, eeprom, eth_pins, usb, fan)
+        (pins, leds, eeprom, eth_pins, usb, fan, hwrev, hw_settings)
     }
 
     /// Configure the GPIO pins for SPI operation, and initialize SPI

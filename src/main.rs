@@ -56,7 +56,6 @@ use command_handler::Handler;
 mod fan_ctrl;
 use fan_ctrl::FanCtrl;
 mod hw_rev;
-use hw_rev::HWRev;
 
 const HSE: MegaHertz = MegaHertz(8);
 #[cfg(not(feature = "semihosting"))]
@@ -121,7 +120,7 @@ fn main() -> ! {
 
     timer::setup(cp.SYST, clocks);
 
-    let (pins, mut leds, mut eeprom, eth_pins, usb, fan) = Pins::setup(
+    let (pins, mut leds, mut eeprom, eth_pins, usb, fan, hwrev, hw_settings) = Pins::setup(
         clocks, dp.TIM1, dp.TIM3, dp.TIM8,
         dp.GPIOA, dp.GPIOB, dp.GPIOC, dp.GPIOD, dp.GPIOE, dp.GPIOF, dp.GPIOG,
         dp.I2C1,
@@ -140,8 +139,6 @@ fn main() -> ! {
 
     let mut store = flash_store::store(dp.FLASH);
 
-    let hwrev = HWRev::detect_hw_rev(&pins.hwrev);
-
     let mut channels = Channels::new(pins);
     for c in 0..CHANNELS {
         match store.read_value::<ChannelConfig>(CHANNEL_CONFIG_KEY[c]) {
@@ -154,7 +151,7 @@ fn main() -> ! {
         }
     }
 
-    let mut fan_ctrl = FanCtrl::new(fan, hwrev);
+    let mut fan_ctrl = FanCtrl::new(fan, hw_settings);
 
     // default net config:
     let mut ipv4_config = Ipv4Config {

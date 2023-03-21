@@ -6,7 +6,7 @@ use stm32f4xx_hal::{
 };
 
 use crate::{
-    hw_rev::HWRev,
+    hw_rev::HWSettings,
     command_handler::JsonBuffer,
 };
 
@@ -17,43 +17,32 @@ const MAX_TEC_I: f32 = 3.0;
 
 const MAX_USER_FAN_PWM: f32 = 100.0;
 const MIN_USER_FAN_PWM: f32 = 1.0;
-const MAX_FAN_PWM: f32 = 1.0;
-// below this value motor's autostart feature may fail
-const MIN_FAN_PWM: f32 = 0.04;
 
-const DEFAULT_K_A: f32 = 1.0;
-const DEFAULT_K_B: f32 = 0.0;
-const DEFAULT_K_C: f32 = 0.0;
 
 pub struct FanCtrl {
-    fan: FanPin,
+    fan: Option<FanPin>,
     fan_auto: bool,
-    available: bool,
-    default_auto: bool,
     pwm_enabled: bool,
     k_a: f32,
     k_b: f32,
     k_c: f32,
     abs_max_tec_i: f32,
+    hw_settings: HWSettings,
 }
 
 impl FanCtrl {
-    pub fn new(fan: FanPin, hwrev: HWRev) -> Self {
-        let available = hwrev.fan_available();
-        let default_auto = hwrev.fan_default_auto();
-
+    pub fn new(fan: Option<FanPin>, hw_settings: HWSettings) -> Self {
         let mut fan_ctrl = FanCtrl {
             fan,
-            available,
             // do not enable auto mode by default,
-            // but allow to turn it on on user's own risk
-            default_auto,
-            fan_auto: default_auto,
+            // but allow to turn it at the user's own risk
+            fan_auto: hw_settings.fan_pwm_recommended,
             pwm_enabled: false,
-            k_a: DEFAULT_K_A,
-            k_b: DEFAULT_K_B,
-            k_c: DEFAULT_K_C,
+            k_a: hw_settings.fan_k_a,
+            k_b: hw_settings.fan_k_b,
+            k_c: hw_settings.fan_k_c,
             abs_max_tec_i: 0f32,
+            hw_settings,
         };
         if fan_ctrl.fan_auto {
             fan_ctrl.enable_pwm();
@@ -63,11 +52,16 @@ impl FanCtrl {
 
     pub fn cycle(&mut self, abs_max_tec_i: f32) {
         self.abs_max_tec_i = abs_max_tec_i;
-        self.adjust_speed();
+        if self.fan_auto && self.hw_settings.fan_available {
+            let scaled_current = self.abs_max_tec_i / MAX_TEC_I;
+            // do not limit upper bound, as it will be limited in the set_pwm()
+            let pwm = (MAX_USER_FAN_PWM * (scaled_current * (scaled_current * self.k_a + self.k_b) + self.k_c)) as u32;
+            self.set_pwm(pwm);
+        }
     }
 
     pub fn summary(&mut self) -> Result<JsonBuffer, serde_json_core::ser::Error> {
-        if self.available {
+        if self.hw_settings.fan_available {
             let summary = FanSummary {
                 fan_pwm: self.get_pwm(),
                 abs_max_tec_i: self.abs_max_tec_i,
@@ -83,15 +77,6 @@ impl FanCtrl {
         }
     }
 
-    pub fn adjust_speed(&mut self) {
-        if self.fan_auto && self.available {
-            let scaled_current = self.abs_max_tec_i / MAX_TEC_I;
-            // do not limit upper bound, as it will be limited in the set_pwm()
-            let pwm = (MAX_USER_FAN_PWM * (scaled_current * (scaled_current * self.k_a + self.k_b) + self.k_c)) as u32;
-            self.set_pwm(pwm);
-        }
-    }
-
     pub fn set_auto_mode(&mut self, fan_auto: bool) {
         self.fan_auto = fan_auto;
     }
@@ -103,42 +88,56 @@ impl FanCtrl {
     }
 
     pub fn restore_defaults(&mut self) {
-        self.set_curve(DEFAULT_K_A, DEFAULT_K_B, DEFAULT_K_C);
+        self.set_curve(self.hw_settings.fan_k_a,
+                       self.hw_settings.fan_k_b,
+                       self.hw_settings.fan_k_c);
     }
 
     pub fn set_pwm(&mut self, fan_pwm: u32) -> f32 {
-        if !self.pwm_enabled {
-            self.enable_pwm()
+        if self.fan.is_none() || (!self.pwm_enabled && !self.enable_pwm())  {
+            return 0f32;
         }
+        let fan = self.fan.as_mut().unwrap();
         let fan_pwm = fan_pwm.min(MAX_USER_FAN_PWM as u32).max(MIN_USER_FAN_PWM as u32);
-        let duty = Self::scale_number(fan_pwm as f32, MIN_FAN_PWM, MAX_FAN_PWM, MIN_USER_FAN_PWM, MAX_USER_FAN_PWM);
-        let max = self.fan.get_max_duty();
+        let duty = scale_number(fan_pwm as f32, self.hw_settings.min_fan_pwm, self.hw_settings.max_fan_pwm, MIN_USER_FAN_PWM, MAX_USER_FAN_PWM);
+        let max = fan.get_max_duty();
         let value = ((duty * (max as f32)) as u16).min(max);
-        self.fan.set_duty(value);
+        fan.set_duty(value);
         value as f32 / (max as f32)
     }
 
-    pub fn is_default_auto(&self) -> bool {
-        self.default_auto
+    pub fn fan_pwm_recommended(&self) -> bool {
+        self.hw_settings.fan_pwm_recommended
     }
 
-    fn scale_number(unscaled: f32, to_min: f32, to_max: f32, from_min: f32, from_max: f32) -> f32 {
-        (to_max - to_min) * (unscaled - from_min) / (from_max - from_min) + to_min
+    pub fn fan_available(&self) -> bool {
+        self.hw_settings.fan_available
     }
 
     fn get_pwm(&self) -> u32 {
-        let duty = self.fan.get_duty();
-        let max = self.fan.get_max_duty();
-        Self::scale_number(duty as f32 / (max as f32), MIN_USER_FAN_PWM, MAX_USER_FAN_PWM, MIN_FAN_PWM, MAX_FAN_PWM).round() as u32
+        if let Some(fan) = &self.fan {
+            let duty = fan.get_duty();
+            let max = fan.get_max_duty();
+            scale_number(duty as f32 / (max as f32), MIN_USER_FAN_PWM, MAX_USER_FAN_PWM, self.hw_settings.min_fan_pwm, self.hw_settings.max_fan_pwm).round() as u32
+        } else { 0 }
     }
 
-    fn enable_pwm(&mut self) {
-        if self.available {
-            self.fan.set_duty(0);
-            self.fan.enable();
+    fn enable_pwm(&mut self) -> bool {
+        if self.fan.is_some() && self.hw_settings.fan_available {
+            let fan = self.fan.as_mut().unwrap();
+            fan.set_duty(0);
+            fan.enable();
             self.pwm_enabled = true;
+            true
+        } else {
+            false
         }
     }
+}
+
+
+fn scale_number(unscaled: f32, to_min: f32, to_max: f32, from_min: f32, from_max: f32) -> f32 {
+    (to_max - to_min) * (unscaled - from_min) / (from_max - from_min) + to_min
 }
 
 #[derive(Serialize)]
