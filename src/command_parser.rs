@@ -343,7 +343,6 @@ fn pwm(input: &[u8]) -> IResult<&[u8], Result<Command, Error>> {
                     }
                 },
             ))(input)?;
-            end(input)?;
             Ok((input, result))
         },
         value(Ok(Command::Show(ShowCommand::Pwm)), end)
@@ -362,7 +361,6 @@ fn center_point(input: &[u8]) -> IResult<&[u8], Result<Command, Error>> {
             Ok((input, value.map(|value| CenterPoint::Override(value as f32))))
         }
     ))(input)?;
-    end(input)?;
     Ok((input, center.map(|center| Command::CenterPoint {
         channel,
         center,
@@ -465,7 +463,6 @@ fn load(input: &[u8]) -> IResult<&[u8], Result<Command, Error>> {
         |input| {
             let (input, _) = whitespace(input)?;
             let (input, channel) = channel(input)?;
-            let (input, _) = end(input)?;
             Ok((input, Some(channel)))
         },
         value(None, end)
@@ -481,7 +478,6 @@ fn save(input: &[u8]) -> IResult<&[u8], Result<Command, Error>> {
         |input| {
             let (input, _) = whitespace(input)?;
             let (input, channel) = channel(input)?;
-            let (input, _) = end(input)?;
             Ok((input, Some(channel)))
         },
         value(None, end)
