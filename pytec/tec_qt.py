@@ -1,5 +1,5 @@
 from PyQt6 import QtWidgets, uic
-from PyQt6.QtCore import QThread, QThreadPool, pyqtSignal, QRunnable, QObject, QSignalBlocker, pyqtSlot
+from PyQt6.QtCore import QThread, QThreadPool, pyqtSignal, QRunnable, QObject, QSignalBlocker, pyqtSlot, QDeadlineTimer
 from pyqtgraph import PlotWidget
 from pyqtgraph.parametertree import Parameter, ParameterTree, ParameterItem, registerParameterType
 import pyqtgraph as pg
@@ -18,6 +18,8 @@ ui: Ui_MainWindow = None
 
 thread_pool = QThreadPool.globalInstance()
 connection_watcher = None
+client_watcher = None
+app: QtWidgets.QApplication = None
 
 
 def get_argparser():
@@ -39,7 +41,7 @@ class WatchConnectTask(QThread):
     connecting = pyqtSignal()
     fan_update = pyqtSignal(object)
 
-    def __init__(self, ip, port, parent):
+    def __init__(self, parent, ip, port):
         self.ip = ip
         self.port = port
         super().__init__(parent)
@@ -55,8 +57,8 @@ class WatchConnectTask(QThread):
                 self.connecting.emit()
                 tec_client = Client(host=self.ip, port=self.port, timeout=30)
                 self.connected.emit(True)
-                self.hw_rev.emit(tec_client.hw_rev())
-                self.fan_update.emit(tec_client.fan())
+                thread_pool.start(ClientTask(lambda: self.hw_rev.emit(tec_client.hw_rev())))
+                #thread_pool.start(ClientTask(lambda: self.fan_update.emit(tec_client.fan())))
         except Exception as e:
             logging.error(f"Failed communicating to the {self.ip}:{self.port}: {e}")
             self.connected.emit(False)
@@ -67,7 +69,39 @@ class WatchConnectTask(QThread):
         if tec_client:
             tec_client.disconnect()
             tec_client = None
-        self.connected.emit(False)
+            self.connected.emit(False)
+
+
+class ClientWatcher(QThread):
+    fan_update = pyqtSignal(object)
+    pwm_update = pyqtSignal(object)
+    report_update = pyqtSignal(object)
+    pid_update = pyqtSignal(object)
+
+    def __init__(self, parent, update_s):
+        self.update_s = update_s
+        self.running = True
+        super().__init__(parent)
+
+    def run(self):
+        while self.running:
+            thread_pool.start(ClientTask(lambda: self.update_params()))
+            self.msleep(int(self.update_s * 1000))
+
+    def update_params(self):
+        self.fan_update.emit(tec_client.fan())
+
+    @pyqtSlot()
+    def stop_watching(self):
+        self.running = False
+        deadline = QDeadlineTimer()
+        deadline.setDeadline(100)
+        self.wait(deadline)
+        self.terminate()
+
+    @pyqtSlot()
+    def set_update_s(self):
+        self.update_s = ui.report_refresh_spin.value()
 
 
 class ClientTask(QRunnable):
@@ -77,16 +111,18 @@ class ClientTask(QRunnable):
         self.kwargs = kwargs
         super().__init__()
 
-    def run(self) -> None:
+    def run(self):
         try:
             self.func(*self.args, **self.kwargs)
         except (TimeoutError, OSError):
             logging.warning("Client connection error, disconnecting", exc_info=True)
             if connection_watcher:
+                thread_pool.clear()  # clearing all next requests
                 connection_watcher.client_disconnected()
 
 
 def connected(result):
+    global client_watcher, connection_watcher
     ui.graph_group.setEnabled(result)
     ui.hw_rev_lbl.setEnabled(result)
     ui.fan_group.setEnabled(result)
@@ -99,6 +135,15 @@ def connected(result):
     if not result:
         ui.hw_rev_lbl.setText("Thermostat vX.Y")
         ui.fan_group.setStyleSheet("")
+        if client_watcher:
+            client_watcher.stop_watching()
+            client_watcher = None
+    elif client_watcher is None:
+        client_watcher = ClientWatcher(ui.main_widget, ui.report_refresh_spin.value())
+        client_watcher.fan_update.connect(fan_update)
+        ui.report_apply_btn.clicked.connect(client_watcher.set_update_s)
+        app.aboutToQuit.connect(client_watcher.stop_watching)
+        client_watcher.start()
 
 
 def hw_rev(hw_rev_d: dict):
@@ -144,25 +189,29 @@ def fan_auto_set(enabled):
 
 def connect():
     global connection_watcher
-    connection_watcher = WatchConnectTask(ui.ip_set_line.text(), ui.port_set_spin.value(), ui.main_widget)
+    connection_watcher = WatchConnectTask(ui.main_widget, ui.ip_set_line.text(), ui.port_set_spin.value())
     connection_watcher.connected.connect(connected)
     connection_watcher.connecting.connect(lambda: ui.status_lbl.setText("Connecting..."))
     connection_watcher.hw_rev.connect(hw_rev)
     connection_watcher.fan_update.connect(fan_update)
     connection_watcher.start()
+    app.aboutToQuit.connect(connection_watcher.terminate)
 
 
 def main():
-    global ui
+    global ui, thread_pool, app
     args = get_argparser().parse_args()
     if args.logLevel:
         logging.basicConfig(level=getattr(logging, args.logLevel))
 
     app = QtWidgets.QApplication(sys.argv)
     main_window = QtWidgets.QMainWindow()
-    #ui = Ui_MainWindow()
-    #ui.setupUi(main_window)
-    ui = uic.loadUi('tec_qt.ui', main_window)
+    ui = Ui_MainWindow()
+    ui.setupUi(main_window)
+    # ui = uic.loadUi('tec_qt.ui', main_window)
+
+    thread_pool = QThreadPool(parent=ui.main_widget)
+    thread_pool.setMaxThreadCount(1)  # avoid concurrent requests
 
     ui.connect_btn.clicked.connect(lambda _checked: connect())
     ui.fan_power_slider.valueChanged.connect(fan_set)
