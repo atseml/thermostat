@@ -11,6 +11,10 @@ class Client:
         self._lines = [""]
         self._check_zero_limits()
 
+    def disconnect(self):
+        self._socket.shutdown(socket.SHUT_RDWR)
+        self._socket.close()
+
     def _check_zero_limits(self):
         pwm_report = self.get_pwm()
         for pwm_channel in pwm_report:
@@ -167,3 +171,11 @@ class Client:
     def load_config(self):
         """Load current configuration from EEPROM"""
         self._command("load")
+
+    def hw_rev(self):
+        """Get Thermostat hardware revision"""
+        return self._command("hwrev")
+
+    def fan(self):
+        """Get Thermostat current fan settings"""
+        return self._command("fan")

@@ -69,7 +69,7 @@
         buildInputs = with pkgs; [
           rust openocd dfu-util
           ] ++ (with python3Packages; [
-            numpy matplotlib
+            numpy matplotlib pyqtgraph setuptools pyqt6
           ]);
       };
       defaultPackage.x86_64-linux = thermostat;
