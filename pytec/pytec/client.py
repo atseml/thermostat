@@ -40,6 +40,7 @@ class Client:
 
         line = self._read_line()
         response = json.loads(line)
+        logging.debug(f"{command}: {response}")
         if "error" in response:
             raise CommandError(response["error"])
         return response

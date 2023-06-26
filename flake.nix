@@ -55,9 +55,45 @@
 
         dontFixup = true;
       };
+
+      qasync = pkgs.python3Packages.buildPythonPackage rec {
+        pname = "qasync";
+        version = "0.24.0";
+        src = pkgs.fetchFromGitHub {
+          owner = "CabbageDevelopment";
+          repo = "qasync";
+          rev = "v${version}";
+          sha256 = "sha256-ls5F+VntXXa3n+dULaYWK9sAmwly1nk/5+RGWLrcf2Y=";
+        };
+        propagatedBuildInputs = [ pkgs.python3Packages.pyqt6 ];
+        nativeCheckInputs = [ pkgs.python3Packages.pytest ];
+        checkPhase = ''
+          pytest -k 'test_qthreadexec.py' # the others cause the test execution to be aborted, I think because of asyncio
+        '';
+      };
+      thermostat_gui = pkgs.python3Packages.buildPythonPackage rec {
+        pname = "thermostat_gui";
+        version = "0.0.0";
+        src = self;
+
+        preBuild =
+          ''
+          export VERSIONEER_OVERRIDE=${version}
+          export VERSIONEER_REV=v0.0.0
+          '';
+
+        nativeBuildInputs = [ pkgs.qt6.wrapQtAppsHook ];
+        propagatedBuildInputs = (with pkgs.python3Packages; [ pyqtgraph pyqt6 qasync]);
+
+        dontWrapQtApps = true;
+        postFixup = ''
+          ls -al $out/
+          wrapQtApp "$out/pytec/tec_qt"
+        '';
+      };
     in {
       packages.x86_64-linux = {
-        inherit thermostat;
+        inherit thermostat qasync thermostat_gui;
       };
 
       hydraJobs = {
@@ -69,7 +105,7 @@
         buildInputs = with pkgs; [
           rust openocd dfu-util
           ] ++ (with python3Packages; [
-            numpy matplotlib pyqtgraph setuptools pyqt6
+            numpy matplotlib pyqtgraph setuptools pyqt6 qasync
           ]);
       };
       defaultPackage.x86_64-linux = thermostat;
