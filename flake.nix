@@ -58,42 +58,37 @@
 
       qasync = pkgs.python3Packages.buildPythonPackage rec {
         pname = "qasync";
-        version = "0.24.0";
-        src = pkgs.fetchFromGitHub {
-          owner = "CabbageDevelopment";
-          repo = "qasync";
-          rev = "v${version}";
-          sha256 = "sha256-ls5F+VntXXa3n+dULaYWK9sAmwly1nk/5+RGWLrcf2Y=";
+        version = "0.27.1";
+        format = "pyproject";
+        src = pkgs.fetchPypi {
+          inherit pname version;
+          sha256 = "sha256-jcdo/R7l3hBEx8MF7M8tOdJNh4A+pxGJ1AJPtHX0mF8=";
         };
+        buildInputs = [ pkgs.python3Packages.poetry-core ];
         propagatedBuildInputs = [ pkgs.python3Packages.pyqt6 ];
-        nativeCheckInputs = [ pkgs.python3Packages.pytest ];
-        checkPhase = ''
-          pytest -k 'test_qthreadexec.py' # the others cause the test execution to be aborted, I think because of asyncio
-        '';
       };
-      thermostat_gui = pkgs.python3Packages.buildPythonPackage rec {
+
+      thermostat_gui = pkgs.python3Packages.buildPythonPackage {
         pname = "thermostat_gui";
         version = "0.0.0";
-        src = self;
-
-        preBuild =
-          ''
-          export VERSIONEER_OVERRIDE=${version}
-          export VERSIONEER_REV=v0.0.0
-          '';
+        src = "${self}/pytec";
 
         nativeBuildInputs = [ pkgs.qt6.wrapQtAppsHook ];
-        propagatedBuildInputs = (with pkgs.python3Packages; [ pyqtgraph pyqt6 qasync]);
+        propagatedBuildInputs = [ pkgs.qt6.qtbase ] ++ (with pkgs.python3Packages; [ pyqtgraph pyqt6 qasync ]);
 
         dontWrapQtApps = true;
         postFixup = ''
-          ls -al $out/
-          wrapQtApp "$out/pytec/tec_qt"
+          wrapQtApp "$out/bin/tec_qt"
         '';
       };
     in {
       packages.x86_64-linux = {
-        inherit thermostat qasync thermostat_gui;
+        inherit thermostat thermostat_gui;
+      };
+
+      apps.x86_64-linux.thermostat_gui = {
+        type = "app";
+        program = "${self.packages.x86_64-linux.thermostat_gui}/bin/tec_qt";
       };
 
       hydraJobs = {

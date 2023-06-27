@@ -1,5 +1,5 @@
 from PyQt6 import QtWidgets, uic
-from PyQt6.QtCore import QThread, QThreadPool, pyqtSignal, QRunnable, QObject, QSignalBlocker, pyqtSlot, QDeadlineTimer
+from PyQt6.QtCore import pyqtSignal, QObject, QSignalBlocker, pyqtSlot
 from pyqtgraph import PlotWidget
 from pyqtgraph.parametertree import Parameter, ParameterTree, ParameterItem, registerParameterType
 import pyqtgraph as pg
@@ -7,9 +7,9 @@ import sys
 import argparse
 import logging
 import asyncio
-import atexit
-from pytec.client import Client
-from qasync import QEventLoop
+from pytec.aioclient import Client
+import qasync
+from qasync import asyncSlot, asyncClose
 
 # pyuic6 -x tec_qt.ui  -o ui_tec_qt.py
 from ui_tec_qt import Ui_MainWindow
@@ -19,9 +19,8 @@ tec_client: Client = None
 # ui = None
 ui: Ui_MainWindow = None
 
-queue = None
-connection_watcher = None
 client_watcher = None
+client_watcher_task = None
 app: QtWidgets.QApplication = None
 
 
@@ -38,80 +37,6 @@ def get_argparser():
     return parser
 
 
-def wrap_client_task(func, *args, **kwargs):
-    loop = asyncio.get_event_loop()
-    task = ClientTask(func, *args, **kwargs)
-    asyncio.ensure_future(queue.put(task), loop=loop)
-
-
-async def process_client_tasks():
-    global queue
-    if queue is None:
-        queue = asyncio.Queue()
-    loop = asyncio.get_event_loop()
-    while True:
-        task = await queue.get()
-        await task.run()
-        queue.task_done()
-
-
-class ClientTask:
-    def __init__(self, func, *args, **kwargs):
-        self.func = func
-        self.args = args
-        self.kwargs = kwargs
-        super().__init__()
-
-    async def run(self):
-        try:
-            lock = asyncio.Lock()
-            async with lock:
-                self.func(*self.args, **self.kwargs)
-        except (TimeoutError, OSError):
-            logging.warning("Client connection error, disconnecting", exc_info=True)
-            if connection_watcher:
-                #thread_pool.clear()  # clearing all next requests
-                connection_watcher.client_disconnected()
-
-
-class WatchConnectTask(QObject):
-    connected = pyqtSignal(bool)
-    hw_rev = pyqtSignal(dict)
-    connecting = pyqtSignal()
-    fan_update = pyqtSignal(object)
-
-    def __init__(self, parent, ip, port):
-        self.ip = ip
-        self.port = port
-        super().__init__(parent)
-
-    def run(self):
-        global tec_client
-        try:
-            if tec_client:
-                tec_client.disconnect()
-                tec_client = None
-                self.connected.emit(False)
-            else:
-                self.connecting.emit()
-                tec_client = Client(host=self.ip, port=self.port, timeout=30)
-                self.connected.emit(True)
-                wrap_client_task(lambda: self.hw_rev.emit(tec_client.hw_rev()))
-                # wrap_client_task(lambda: self.fan_update.emit(tec_client.fan()))
-        except Exception as e:
-            logging.error(f"Failed communicating to the {self.ip}:{self.port}: {e}")
-            self.connected.emit(False)
-
-    @pyqtSlot()
-    def client_disconnected(self):
-        global tec_client
-        if tec_client:
-            tec_client.disconnect()
-            tec_client = None
-            self.connected.emit(False)
-
-
-
 class ClientWatcher(QObject):
     fan_update = pyqtSignal(object)
     pwm_update = pyqtSignal(object)
@@ -125,19 +50,15 @@ class ClientWatcher(QObject):
 
     async def run(self):
         while self.running:
-            wrap_client_task(lambda: self.update_params())
-            await asyncio.sleep(int(self.update_s * 1000))
+            await self.update_params()
+            await asyncio.sleep(self.update_s)
 
-    def update_params(self):
-        self.fan_update.emit(tec_client.fan())
+    async def update_params(self):
+        self.fan_update.emit(await tec_client.fan())
 
     @pyqtSlot()
     def stop_watching(self):
         self.running = False
-        #deadline = QDeadlineTimer()
-        #deadline.setDeadline(100)
-        #self.wait(deadline)
-        #self.terminate()
 
     @pyqtSlot()
     def set_update_s(self):
@@ -145,7 +66,7 @@ class ClientWatcher(QObject):
 
 
 def on_connection_changed(result):
-    global client_watcher, connection_watcher
+    global client_watcher, client_watcher_task
     ui.graph_group.setEnabled(result)
     ui.hw_rev_lbl.setEnabled(result)
     ui.fan_group.setEnabled(result)
@@ -161,12 +82,7 @@ def on_connection_changed(result):
         if client_watcher:
             client_watcher.stop_watching()
             client_watcher = None
-    elif client_watcher is None:
-        client_watcher = ClientWatcher(ui.main_widget, ui.report_refresh_spin.value())
-        client_watcher.fan_update.connect(fan_update)
-        ui.report_apply_btn.clicked.connect(client_watcher.set_update_s)
-        app.aboutToQuit.connect(client_watcher.stop_watching)
-        wrap_client_task(client_watcher.run)
+            client_watcher_task = None
 
 
 def hw_rev(hw_rev_d: dict):
@@ -192,55 +108,73 @@ def fan_update(fan_settings):
         ui.fan_auto_box.setChecked(fan_settings["auto_mode"])
 
 
-def fan_set():
+@asyncSlot()
+async def fan_set(_):
     global tec_client
     if tec_client is None or ui.fan_auto_box.isChecked():
         return
-    wrap_client_task(lambda: tec_client.set_param("fan", ui.fan_power_slider.value()))
+    await tec_client.set_param("fan", ui.fan_power_slider.value())
 
 
-def fan_auto_set(enabled):
+@asyncSlot()
+async def fan_auto_set(enabled):
     global tec_client
     if tec_client is None:
         return
     ui.fan_power_slider.setEnabled(not enabled)
     if enabled:
-        wrap_client_task(lambda: tec_client.set_param("fan", "auto"))
+        await tec_client.set_param("fan", "auto")
     else:
-        wrap_client_task(lambda: tec_client.set_param("fan", ui.fan_power_slider.value()))
+        await tec_client.set_param("fan", ui.fan_power_slider.value())
 
 
-def connect():
-    global connection_watcher
-    connection_watcher = WatchConnectTask(ui.main_widget, ui.ip_set_line.text(), ui.port_set_spin.value())
-    connection_watcher.connected.connect(on_connection_changed)
-    connection_watcher.connecting.connect(lambda: ui.status_lbl.setText("Connecting..."))
-    connection_watcher.hw_rev.connect(hw_rev)
-    connection_watcher.fan_update.connect(fan_update)
-    wrap_client_task(connection_watcher.run)
-    #app.aboutToQuit.connect(connection_watcher.terminate)
+@asyncSlot()
+async def connect(_):
+    global tec_client, client_watcher, client_watcher_task
+    ip, port = ui.ip_set_line.text(), ui.port_set_spin.value()
+    try:
+        if tec_client:
+            await tec_client.disconnect()
+            tec_client = None
+            on_connection_changed(False)
+        else:
+            ui.status_lbl.setText("Connecting...")
+            tec_client = Client()
+            await tec_client.connect(host=ip, port=port, timeout=30)
+            on_connection_changed(True)
+            hw_rev(await tec_client.hw_rev())
+            # fan_update(await tec_client.fan())
+            if client_watcher is None:
+                client_watcher = ClientWatcher(ui.main_widget, ui.report_refresh_spin.value())
+                client_watcher.fan_update.connect(fan_update)
+                ui.report_apply_btn.clicked.connect(
+                    lambda: client_watcher.set_update_s(ui.report_refresh_spin.value())
+                )
+                app.aboutToQuit.connect(client_watcher.stop_watching)
+                client_watcher_task = asyncio.create_task(client_watcher.run())
+    except Exception as e:
+        logging.error(f"Failed communicating to the {ip}:{port}: {e}")
+        on_connection_changed(False)
 
 
-def main():
-    global ui, app, queue
+async def coro_main():
+    global ui, app
+
     args = get_argparser().parse_args()
     if args.logLevel:
         logging.basicConfig(level=getattr(logging, args.logLevel))
 
-    app = QtWidgets.QApplication(sys.argv)
+    app_quit_event = asyncio.Event()
 
-    loop = QEventLoop(app)
-    asyncio.set_event_loop(loop)
-    atexit.register(loop.close)
-
-    loop.create_task(process_client_tasks())
+    app = QtWidgets.QApplication.instance()
+    app.aboutToQuit.connect(app_quit_event.set)
 
     main_window = QtWidgets.QMainWindow()
     ui = Ui_MainWindow()
     ui.setupUi(main_window)
     # ui = uic.loadUi('tec_qt.ui', main_window)
 
-    ui.connect_btn.clicked.connect(lambda _checked: connect())
+    ui.connect_btn.clicked.connect(connect)
     ui.fan_power_slider.valueChanged.connect(fan_set)
     ui.fan_auto_box.stateChanged.connect(fan_auto_set)
 
@@ -253,7 +187,11 @@ def main():
 
     main_window.show()
 
-    loop.run_until_complete(app.exec())
+    await app_quit_event.wait()
+
+
+def main():
+    qasync.run(coro_main())
 
 
 if __name__ == '__main__':

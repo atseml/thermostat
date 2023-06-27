@@ -9,4 +9,10 @@ setup(
     license="GPLv3",
     install_requires=["setuptools"],
     packages=find_packages(),
+    entry_points={
+        "gui_scripts": [
+            "tec_qt = tec_qt:main",
+        ]
+    },
+    py_modules=['tec_qt', 'ui_tec_qt'],
 )
