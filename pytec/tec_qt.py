@@ -15,6 +15,52 @@ from qasync import asyncSlot, asyncClose
 from ui_tec_qt import Ui_MainWindow
 
 
+class CommandsParameter(Parameter):
+    def __init__(self, **opts):
+        super().__init__()
+        self.opts["commands"] = opts.get("commands", None)
+        self.opts["payload"] = opts.get("payload", None)
+
+
+ThermostatParams = [[
+    {'name': 'Constant Current', 'type': 'float', 'value': 0, 'step': 0.1, 'limits': (-3, 3), 'siPrefix': True,
+     'suffix': 'A', 'commands': [f'pwm {ch} i_set {{value}}']},
+    {'name': 'Temperature PID', 'type': 'bool', 'value': False, 'commands': [f'pwm {ch} pid'], 'payload': ch,
+     'children': [
+         {'name': 'Set Temperature', 'type': 'float', 'value': 25, 'step': 0.1, 'limits': (-273, 300), 'siPrefix': True,
+          'suffix': '°C', 'commands': [f'pid {ch} target {{value}}']},
+     ]},
+    {'name': 'Output Config', 'expanded': False, 'type': 'group', 'children': [
+        {'name': 'Max Current', 'type': 'float', 'value': 0, 'step': 0.1, 'limits': (0, 3), 'siPrefix': True,
+         'suffix': 'A', 'commands': [f'pwm {ch} max_i_pos {{value}}', f'pwm {ch} max_i_neg {{value}}',
+                                     f'pid {ch} output_min -{{value}}', f'pid {ch} output_max {{value}}']},
+        {'name': 'Max Voltage', 'type': 'float', 'value': 0, 'step': 0.1, 'limits': (0, 5), 'siPrefix': True,
+         'suffix': 'V', 'commands': [f'pwm {ch} max_v {{value}}']},
+    ]},
+    {'name': 'Thermistor Config', 'expanded': False, 'type': 'group', 'children': [
+        {'name': 'T0', 'type': 'float', 'value': 25, 'step': 0.1, 'limits': (-100, 100), 'siPrefix': True,
+         'suffix': 'C', 'commands': [f's-h {ch} t0 {{value}}']},
+        {'name': 'R0', 'type': 'float', 'value': 10000, 'step': 1, 'siPrefix': True, 'suffix': 'Ohm',
+         'commands': [f's-h {ch} r0 {{value}}']},
+        {'name': 'Beta', 'type': 'float', 'value': 3950, 'step': 1, 'commands': [f's-h {ch} b {{value}}']},
+    ]},
+    {'name': 'PID Config', 'expanded': False, 'type': 'group', 'children': [
+        {'name': 'kP', 'type': 'float', 'value': 0, 'step': 0.1, 'commands': [f'pid {ch} kp {{value}}']},
+        {'name': 'kI', 'type': 'float', 'value': 0, 'step': 0.1, 'commands': [f'pid {ch} ki {{value}}']},
+        {'name': 'kD', 'type': 'float', 'value': 0, 'step': 0.1, 'commands': [f'pid {ch} kd {{value}}']},
+        {'name': 'PID Auto Tune', 'expanded': False, 'type': 'group', 'children': [
+            {'name': 'Target Temperature', 'type': 'float', 'value': 20, 'step': 0.1, 'siPrefix': True, 'suffix': 'C'},
+            {'name': 'Test Current', 'type': 'float', 'value': 1, 'step': 0.1, 'siPrefix': True, 'suffix': 'A'},
+            {'name': 'Temperature Swing', 'type': 'float', 'value': 1.5, 'step': 0.1, 'siPrefix': True, 'suffix': 'C'},
+            {'name': 'Run', 'type': 'action', 'tip': 'Run'},
+        ]},
+    ]}
+] for ch in range(2)]
+
+params = [CommandsParameter.create(name='Thermostat Params 0', type='group', children=ThermostatParams[0]),
+          CommandsParameter.create(name='Thermostat Params 1', type='group', children=ThermostatParams[1])]
+
+
 def get_argparser():
     parser = argparse.ArgumentParser(description="ARTIQ master")
 
@@ -49,6 +95,9 @@ class ClientWatcher(QObject):
 
     async def update_params(self):
         self.fan_update.emit(await self.client.fan())
+        self.pwm_update.emit(await self.client.get_pwm())
+        self.report_update.emit(await self.client._command("report"))
+        self.pid_update.emit(await self.client.get_pid())
 
     def start_watching(self):
         self.watch_task = asyncio.create_task(self.run())
@@ -77,6 +126,8 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
 
         self.fan_power_slider.valueChanged.connect(self.fan_set)
         self.fan_auto_box.stateChanged.connect(self.fan_auto_set)
+
+        self._set_param_tree()
 
         self.fan_pwm_recommended = False
 
@@ -204,6 +255,39 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             logging.error(f"Failed communicating to {ip}:{port}: {e}")
             await self._on_connection_changed(False)
             await self.tec_client.disconnect()
+
+    @asyncSlot(object, object)
+    async def send_command(self, param, changes):
+        for param, change, data in changes:
+            if param.name() == 'Temperature PID' and not data:
+                ch = param.opts["payload"]
+                await self.tec_client.set_param('pwm', ch, 'i_set', params[ch].child('Constant Current').value())
+            elif param.opts.get("commands", None) is not None:
+                await asyncio.gather(*[self.tec_client._command(x.format(value=data)) for x in param.opts["commands"]])
+
+    def _set_param_tree(self):
+        self.ch0_tree.setParameters(params[0], showTop=False)
+        self.ch1_tree.setParameters(params[1], showTop=False)
+        params[0].sigTreeStateChanged.connect(self.send_command)
+        params[1].sigTreeStateChanged.connect(self.send_command)
+
+    @pyqtSlot(list)
+    def update_pid(self, pid_settings):
+        for settings in pid_settings:
+            channel = settings["channel"]
+            with QSignalBlocker(params[channel]) as _:
+                params[channel].child("PID Config", "kP").setValue(settings["parameters"]["kp"])
+                params[channel].child("PID Config", "kI").setValue(settings["parameters"]["ki"])
+                params[channel].child("PID Config", "kD").setValue(settings["parameters"]["kd"])
+                if params[channel].child("Temperature PID").value():
+                    params[channel].child("Temperature PID", "Set Temperature").setValue(settings["target"])
+
+    @pyqtSlot(list)
+    def update_report(self, report_data):
+        for settings in report_data:
+            channel = settings["channel"]
+            with QSignalBlocker(params[channel]) as _:
+                params[channel].child("Temperature PID").setValue(settings["pid_engaged"])
 
 
 async def coro_main():
