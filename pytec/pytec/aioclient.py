@@ -9,15 +9,51 @@ class Client:
     def __init__(self):
         self._reader = None
         self._writer = None
+        self._connecting_task = None
         self._command_lock = asyncio.Lock()
 
     async def connect(self, host='192.168.1.26', port=23, timeout=None):
-        self._reader, self._writer = await asyncio.open_connection(host, port)
+        """Connect to the TEC with host and port, throws TimeoutError if
+        unable to connect. Returns True if not cancelled with disconnect.
+
+        Example::
+            client = aioclient.Client()
+            connected = await client.connect()
+            if connected:
+                return
+        """
+        self._connecting_task = asyncio.create_task(asyncio.open_connection(host, port))
+        try:
+            self._reader, self._writer = await self._connecting_task
+        except asyncio.CancelledError:
+            return False
+        finally:
+            self._connecting_task = None
+
         await self._check_zero_limits()
+        return True
+
+    def is_connecting(self):
+        """Returns True if client is connecting"""
+        return self._connecting_task is not None
+
+    def is_connected(self):
+        """Returns True if client is connected"""
+        return self._writer is not None
 
     async def disconnect(self):
+        """Disconnect the client if connected, cancel connection if connecting"""
+        if self._connecting_task is not None:
+            self._connecting_task.cancel()
+
+        if self._writer is None:
+            return
+
+        # Reader needn't be closed
         self._writer.close()
         await self._writer.wait_closed()
+        self._reader = None
+        self._writer = None
 
     async def _check_zero_limits(self):
         pwm_report = await self.get_pwm()
@@ -145,11 +181,11 @@ class Client:
         """Set configuration parameters
 
         Examples::
-            tec.set_param("pwm", 0, "max_v", 2.0)
-            tec.set_param("pid", 1, "output_max", 2.5)
-            tec.set_param("s-h", 0, "t0", 20.0)
-            tec.set_param("center", 0, "vref")
-            tec.set_param("postfilter", 1, 21)
+            await tec.set_param("pwm", 0, "max_v", 2.0)
+            await tec.set_param("pid", 1, "output_max", 2.5)
+            await tec.set_param("s-h", 0, "t0", 20.0)
+            await tec.set_param("center", 0, "vref")
+            await tec.set_param("postfilter", 1, 21)
 
         See the firmware's README.md for a full list.
         """

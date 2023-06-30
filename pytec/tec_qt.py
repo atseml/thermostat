@@ -1,4 +1,4 @@
-from PyQt6 import QtWidgets, uic
+from PyQt6 import QtWidgets, QtGui
 from PyQt6.QtCore import pyqtSignal, QObject, QSignalBlocker, pyqtSlot
 from pyqtgraph import PlotWidget
 from pyqtgraph.parametertree import Parameter, ParameterTree, ParameterItem, registerParameterType
@@ -13,15 +13,6 @@ from qasync import asyncSlot, asyncClose
 
 # pyuic6 -x tec_qt.ui  -o ui_tec_qt.py
 from ui_tec_qt import Ui_MainWindow
-
-tec_client: Client = None
-
-# ui = None
-ui: Ui_MainWindow = None
-
-client_watcher = None
-client_watcher_task = None
-app: QtWidgets.QApplication = None
 
 
 def get_argparser():
@@ -38,130 +29,184 @@ def get_argparser():
 
 
 class ClientWatcher(QObject):
-    fan_update = pyqtSignal(object)
-    pwm_update = pyqtSignal(object)
-    report_update = pyqtSignal(object)
-    pid_update = pyqtSignal(object)
+    fan_update = pyqtSignal(dict)
+    pwm_update = pyqtSignal(list)
+    report_update = pyqtSignal(list)
+    pid_update = pyqtSignal(list)
 
-    def __init__(self, parent, update_s):
+    def __init__(self, parent, client, update_s):
         self.update_s = update_s
-        self.running = True
+        self.client = client
+        self.watch_task = None
         super().__init__(parent)
 
     async def run(self):
         loop = asyncio.get_running_loop()
-        while self.running:
+        while True:
             time = loop.time()
             await self.update_params()
             await asyncio.sleep(self.update_s - (loop.time() - time))
 
     async def update_params(self):
-        self.fan_update.emit(await tec_client.fan())
+        self.fan_update.emit(await self.client.fan())
+
+    def start_watching(self):
+        self.watch_task = asyncio.create_task(self.run())
+
+    def is_watching(self):
+        return self.watch_task is not None
 
     @pyqtSlot()
     def stop_watching(self):
-        self.running = False
+        if self.watch_task is not None:
+            self.watch_task.cancel()
+            self.watch_task = None
 
-    @pyqtSlot()
-    def set_update_s(self):
-        self.update_s = ui.report_refresh_spin.value()
-
-
-def on_connection_changed(result):
-    global client_watcher, client_watcher_task
-    ui.graph_group.setEnabled(result)
-    ui.hw_rev_lbl.setEnabled(result)
-    ui.fan_group.setEnabled(result)
-    ui.report_group.setEnabled(result)
-
-    ui.ip_set_line.setEnabled(not result)
-    ui.port_set_spin.setEnabled(not result)
-    ui.status_lbl.setText("Connected" if result else "Disconnected")
-    ui.connect_btn.setText("Disconnect" if result else "Connect")
-    if not result:
-        ui.hw_rev_lbl.setText("Thermostat vX.Y")
-        ui.fan_group.setStyleSheet("")
-        if client_watcher:
-            client_watcher.stop_watching()
-            client_watcher = None
-            client_watcher_task = None
+    @pyqtSlot(float)
+    def set_update_s(self, update_s):
+        self.update_s = update_s
 
 
-def hw_rev(hw_rev_d: dict):
-    logging.debug(hw_rev_d)
-    ui.hw_rev_lbl.setText(f"Thermostat v{hw_rev_d['rev']['major']}.{hw_rev_d['rev']['major']}")
-    ui.fan_group.setEnabled(hw_rev_d["settings"]["fan_available"])
-    if hw_rev_d["settings"]["fan_pwm_recommended"]:
-        ui.fan_group.setStyleSheet("")
-        ui.fan_group.setToolTip("")
-    else:
-        ui.fan_group.setStyleSheet("background-color: yellow")
-        ui.fan_group.setToolTip("Changing the fan settings of not recommended")
+class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
+    def __init__(self, args):
+        super().__init__()
 
+        self.setupUi(self)
 
-def fan_update(fan_settings):
-    logging.debug(fan_settings)
-    if fan_settings is None:
-        return
-    with QSignalBlocker(ui.fan_power_slider):
-        ui.fan_power_slider.setValue(fan_settings["fan_pwm"])
-        ui.fan_power_slider.setEnabled(not fan_settings["auto_mode"])
-    with QSignalBlocker(ui.fan_auto_box):
-        ui.fan_auto_box.setChecked(fan_settings["auto_mode"])
+        self._set_up_context_menu()
 
+        self.fan_power_slider.valueChanged.connect(self.fan_set)
+        self.fan_auto_box.stateChanged.connect(self.fan_auto_set)
 
-@asyncSlot()
-async def fan_set(_):
-    global tec_client
-    if tec_client is None or ui.fan_auto_box.isChecked():
-        return
-    await tec_client.set_param("fan", ui.fan_power_slider.value())
+        self.fan_pwm_recommended = False
 
+        self.tec_client = Client()
+        self.client_watcher = ClientWatcher(self, self.tec_client, self.report_refresh_spin.value())
+        self.client_watcher.fan_update.connect(self.fan_update)
+        self.report_apply_btn.clicked.connect(
+            lambda: self.client_watcher.set_update_s(self.report_refresh_spin.value())
+        )
 
-@asyncSlot()
-async def fan_auto_set(enabled):
-    global tec_client
-    if tec_client is None:
-        return
-    ui.fan_power_slider.setEnabled(not enabled)
-    if enabled:
-        await tec_client.set_param("fan", "auto")
-    else:
-        await tec_client.set_param("fan", ui.fan_power_slider.value())
+        if args.connect:
+            if args.IP:
+                self.ip_set_line.setText(args.IP)
+            if args.PORT:
+                self.port_set_spin.setValue(int(args.PORT))
+            self.connect_btn.click()
 
+    def _set_up_context_menu(self):
+        self.menu = QtWidgets.QMenu()
+        self.menu.setTitle('Thermostat settings')
 
-@asyncSlot()
-async def connect(_):
-    global tec_client, client_watcher, client_watcher_task
-    ip, port = ui.ip_set_line.text(), ui.port_set_spin.value()
-    try:
-        if tec_client:
-            await tec_client.disconnect()
-            tec_client = None
-            on_connection_changed(False)
+        port = QtWidgets.QWidgetAction(self.menu)
+        port.setDefaultWidget(self.port_set_spin)
+        self.menu.addAction(port)
+        self.menu.port = port
+
+        fan = QtWidgets.QWidgetAction(self.menu)
+        fan.setDefaultWidget(self.fan_group)
+        self.menu.addAction(fan)
+        self.menu.fan = fan
+
+        self.thermostat_settings.setMenu(self.menu)
+
+    async def _on_connection_changed(self, result):
+        self.graph_group.setEnabled(result)
+        self.fan_group.setEnabled(result)
+        self.report_group.setEnabled(result)
+
+        self.ip_set_line.setEnabled(not result)
+        self.port_set_spin.setEnabled(not result)
+        self.connect_btn.setText("Disconnect" if result else "Connect")
+        if result:
+            self.client_watcher.start_watching()
+            self._status(await self.tec_client.hw_rev())
+            self.fan_update(await self.tec_client.fan())
         else:
-            ui.status_lbl.setText("Connecting...")
-            tec_client = Client()
-            await tec_client.connect(host=ip, port=port, timeout=30)
-            on_connection_changed(True)
-            hw_rev(await tec_client.hw_rev())
-            # fan_update(await tec_client.fan())
-            if client_watcher is None:
-                client_watcher = ClientWatcher(ui.main_widget, ui.report_refresh_spin.value())
-                client_watcher.fan_update.connect(fan_update)
-                ui.report_apply_btn.clicked.connect(
-                    lambda: client_watcher.set_update_s(ui.report_refresh_spin.value())
-                )
-                app.aboutToQuit.connect(client_watcher.stop_watching)
-                client_watcher_task = asyncio.create_task(client_watcher.run())
-    except Exception as e:
-        logging.error(f"Failed communicating to the {ip}:{port}: {e}")
-        on_connection_changed(False)
+            self.status_lbl.setText("Disconnected")
+            self.fan_pwm_warning.setPixmap(QtGui.QPixmap())
+            self.fan_pwm_warning.setToolTip("")
+            self.client_watcher.stop_watching()
+
+    def _set_fan_pwm_warning(self):
+        if self.fan_power_slider.value() != 100:
+            pixmapi = getattr(QtWidgets.QStyle.StandardPixmap, "SP_MessageBoxWarning")
+            icon = self.style().standardIcon(pixmapi)
+            self.fan_pwm_warning.setPixmap(icon.pixmap(16, 16))
+            self.fan_pwm_warning.setToolTip("Throttling the fan (not recommended on this hardware rev)")
+        else:
+            self.fan_pwm_warning.setPixmap(QtGui.QPixmap())
+            self.fan_pwm_warning.setToolTip("")
+
+    def _status(self, hw_rev_d: dict):
+        logging.debug(hw_rev_d)
+        self.status_lbl.setText(f"Connected to Thermostat v{hw_rev_d['rev']['major']}.{hw_rev_d['rev']['minor']}")
+        self.fan_group.setEnabled(hw_rev_d["settings"]["fan_available"])
+        self.fan_pwm_recommended = hw_rev_d["settings"]["fan_pwm_recommended"]
+
+    @pyqtSlot(dict)
+    def fan_update(self, fan_settings: dict):
+        logging.debug(fan_settings)
+        if fan_settings is None:
+            return
+        with QSignalBlocker(self.fan_power_slider):
+            self.fan_power_slider.setValue(fan_settings["fan_pwm"] or 100) # 0 = PWM off = full strength
+        with QSignalBlocker(self.fan_auto_box):
+            self.fan_auto_box.setChecked(fan_settings["auto_mode"])
+        if not self.fan_pwm_recommended:
+            self._set_fan_pwm_warning()
+
+    @asyncSlot(int)
+    async def fan_set(self, value):
+        if not self.tec_client.is_connected():
+            return
+        if self.fan_auto_box.isChecked():
+            with QSignalBlocker(self.fan_auto_box):
+                self.fan_auto_box.setChecked(False)
+        await self.tec_client.set_param("fan", value)
+        if not self.fan_pwm_recommended:
+            self._set_fan_pwm_warning()
+
+    @asyncSlot(int)
+    async def fan_auto_set(self, enabled):
+        if not self.tec_client.is_connected():
+            return
+        if enabled:
+            await self.tec_client.set_param("fan", "auto")
+            self.fan_update(await self.tec_client.fan())
+        else:
+            await self.tec_client.set_param("fan", self.fan_power_slider.value())
+
+    @asyncClose
+    async def closeEvent(self, event):
+        self.client_watcher.stop_watching()
+        await self.tec_client.disconnect()
+
+    @asyncSlot()
+    async def on_connect_btn_clicked(self):
+        ip, port = self.ip_set_line.text(), self.port_set_spin.value()
+        try:
+            if not (self.tec_client.is_connecting() or self.tec_client.is_connected()):
+                self.status_lbl.setText("Connecting...")
+                self.connect_btn.setText("Stop")
+                self.ip_set_line.setEnabled(False)
+                self.port_set_spin.setEnabled(False)
+
+                connected = await self.tec_client.connect(host=ip, port=port, timeout=30)
+                if not connected:
+                    return
+                await self._on_connection_changed(True)
+            else:
+                await self._on_connection_changed(False)
+                await self.tec_client.disconnect()
+
+        except (OSError, TimeoutError) as e:
+            logging.error(f"Failed communicating to {ip}:{port}: {e}")
+            await self._on_connection_changed(False)
+            await self.tec_client.disconnect()
 
 
 async def coro_main():
-    global ui, app
-
     args = get_argparser().parse_args()
     if args.logLevel:
         logging.basicConfig(level=getattr(logging, args.logLevel))
@@ -171,22 +216,7 @@ async def coro_main():
     app = QtWidgets.QApplication.instance()
     app.aboutToQuit.connect(app_quit_event.set)
 
-    main_window = QtWidgets.QMainWindow()
-    ui = Ui_MainWindow()
-    ui.setupUi(main_window)
-    # ui = uic.loadUi('tec_qt.ui', main_window)
-
-    ui.connect_btn.clicked.connect(connect)
-    ui.fan_power_slider.valueChanged.connect(fan_set)
-    ui.fan_auto_box.stateChanged.connect(fan_auto_set)
-
-    if args.connect:
-        if args.IP:
-            ui.ip_set_line.setText(args.IP)
-        if args.PORT:
-            ui.port_set_spin.setValue(int(args.PORT))
-        ui.connect_btn.click()
-
+    main_window = MainWindow(args)
     main_window.show()
 
     await app_quit_event.wait()
