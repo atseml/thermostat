@@ -101,10 +101,10 @@ def fan_update(fan_settings):
     logging.debug(fan_settings)
     if fan_settings is None:
         return
-    with QSignalBlocker(ui.fan_power_slider) as _:
+    with QSignalBlocker(ui.fan_power_slider):
         ui.fan_power_slider.setValue(fan_settings["fan_pwm"])
         ui.fan_power_slider.setEnabled(not fan_settings["auto_mode"])
-    with QSignalBlocker(ui.fan_auto_box) as _:
+    with QSignalBlocker(ui.fan_auto_box):
         ui.fan_auto_box.setChecked(fan_settings["auto_mode"])
 
 
