@@ -275,7 +275,7 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
     def update_pid(self, pid_settings):
         for settings in pid_settings:
             channel = settings["channel"]
-            with QSignalBlocker(params[channel]) as _:
+            with QSignalBlocker(params[channel]):
                 params[channel].child("PID Config", "kP").setValue(settings["parameters"]["kp"])
                 params[channel].child("PID Config", "kI").setValue(settings["parameters"]["ki"])
                 params[channel].child("PID Config", "kD").setValue(settings["parameters"]["kd"])
@@ -286,7 +286,7 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
     def update_report(self, report_data):
         for settings in report_data:
             channel = settings["channel"]
-            with QSignalBlocker(params[channel]) as _:
+            with QSignalBlocker(params[channel]):
                 params[channel].child("Temperature PID").setValue(settings["pid_engaged"])
 
 
