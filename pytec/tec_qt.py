@@ -49,9 +49,11 @@ class ClientWatcher(QObject):
         super().__init__(parent)
 
     async def run(self):
+        loop = asyncio.get_running_loop()
         while self.running:
+            time = loop.time()
             await self.update_params()
-            await asyncio.sleep(self.update_s)
+            await asyncio.sleep(self.update_s - (loop.time() - time))
 
     async def update_params(self):
         self.fan_update.emit(await tec_client.fan())
