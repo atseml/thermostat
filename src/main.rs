@@ -143,7 +143,7 @@ fn main() -> ! {
     for c in 0..CHANNELS {
         match store.read_value::<ChannelConfig>(CHANNEL_CONFIG_KEY[c]) {
             Ok(Some(config)) =>
-                config.apply(&mut channels, c),
+                config.apply(&mut channels, c, &mut leds),
             Ok(None) =>
                 error!("flash config not found for channel {}", c),
             Err(e) =>

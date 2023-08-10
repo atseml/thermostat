@@ -10,6 +10,7 @@ use crate::{
     command_parser::CenterPoint,
     pid,
     steinhart_hart,
+    leds::Leds,
 };
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -44,7 +45,7 @@ impl ChannelConfig {
         }
     }
 
-    pub fn apply(&self, channels: &mut Channels, channel: usize) {
+    pub fn apply(&self, channels: &mut Channels, channel: usize, leds: &mut Leds) {
         let state = channels.channel_state(channel);
         state.center = self.center.clone();
         state.pid.parameters = self.pid.clone();
@@ -59,6 +60,13 @@ impl ChannelConfig {
             adc_postfilter => Some(adc_postfilter),
         };
         let _ = channels.adc.set_postfilter(channel as u8, adc_postfilter);
+
+        // Update L3 if PID status changed
+        if channels.pid_engaged() {
+            leds.g3.on();
+        } else {
+            leds.g3.off();
+        }
     }
 }
 

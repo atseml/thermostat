@@ -278,12 +278,12 @@ impl Handler {
         Ok(Handler::Handled)
     }
 
-    fn load_channel (socket: &mut TcpSocket, channels: &mut Channels, store: &mut FlashStore, channel: Option<usize>) -> Result<Handler, Error> {
+    fn load_channel (socket: &mut TcpSocket, channels: &mut Channels, leds: &mut Leds, store: &mut FlashStore, channel: Option<usize>) -> Result<Handler, Error> {
         for c in 0..CHANNELS {
             if channel.is_none() || channel == Some(c) {
                 match store.read_value::<ChannelConfig>(CHANNEL_CONFIG_KEY[c]) {
                     Ok(Some(config)) => {
-                        config.apply(channels, c);
+                        config.apply(channels, c, leds);
                         send_line(socket, b"{}");
                     }
                     Ok(None) => {
@@ -436,7 +436,7 @@ impl Handler {
             Command::SteinhartHart { channel, parameter, value } => Handler::set_steinhart_hart(socket, channels, channel, parameter, value),
             Command::PostFilter { channel, rate: None } => Handler::reset_post_filter(socket, channels, channel),
             Command::PostFilter { channel, rate: Some(rate) } => Handler::set_post_filter(socket, channels, channel, rate),
-            Command::Load { channel } => Handler::load_channel(socket, channels, store, channel),
+            Command::Load { channel } => Handler::load_channel(socket, channels, leds, store, channel),
             Command::Save { channel } => Handler::save_channel(socket, channels, channel, store),
             Command::Ipv4(config) => Handler::set_ipv4(socket, store, config),
             Command::Reset => Handler::reset(channels),
