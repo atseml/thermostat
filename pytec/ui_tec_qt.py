@@ -295,7 +295,7 @@ class Ui_MainWindow(object):
 
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
-        MainWindow.setWindowTitle(_translate("MainWindow", "Control TEC"))
+        MainWindow.setWindowTitle(_translate("MainWindow", "Thermostat Control Panel"))
         self.ch1_t_graph.setTitle(_translate("MainWindow", "Channel 1 Temperature"))
         self.ch0_t_graph.setTitle(_translate("MainWindow", "Channel 0 Temperature"))
         self.ch0_i_graph.setTitle(_translate("MainWindow", "Channel 0 Current"))

@@ -23,7 +23,7 @@
    </size>
   </property>
   <property name="windowTitle">
-   <string>Control TEC</string>
+   <string>Thermostat Control Panel</string>
   </property>
   <widget class="QWidget" name="main_widget">
    <property name="sizePolicy">
