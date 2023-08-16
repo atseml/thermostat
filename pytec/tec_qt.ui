@@ -25,6 +25,10 @@
   <property name="windowTitle">
    <string>Thermostat Control Panel</string>
   </property>
+  <property name="windowIcon">
+   <iconset>
+    <normaloff>thermostat-icon-640x640.png</normaloff>thermostat-icon-640x640.png</iconset>
+  </property>
   <widget class="QWidget" name="main_widget">
    <property name="sizePolicy">
     <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
@@ -96,32 +100,16 @@
           <widget class="ParameterTree" name="ch0_tree" native="true"/>
          </item>
          <item row="1" column="1">
-          <widget class="PlotWidget" name="ch1_t_graph" native="true">
-           <property name="title">
-            <string>Channel 1 Temperature</string>
-           </property>
-          </widget>
+          <widget class="LivePlotWidget" name="ch1_t_graph" native="true"/>
          </item>
          <item row="0" column="1">
-          <widget class="PlotWidget" name="ch0_t_graph" native="true">
-           <property name="title">
-            <string>Channel 0 Temperature</string>
-           </property>
-          </widget>
+          <widget class="LivePlotWidget" name="ch0_t_graph" native="true"/>
          </item>
          <item row="0" column="2">
-          <widget class="PlotWidget" name="ch0_i_graph" native="true">
-           <property name="title">
-            <string>Channel 0 Current</string>
-           </property>
-          </widget>
+          <widget class="LivePlotWidget" name="ch0_i_graph" native="true"/>
          </item>
          <item row="1" column="2">
-          <widget class="PlotWidget" name="ch1_i_graph" native="true">
-           <property name="title">
-            <string>Channel 1 Current</string>
-           </property>
-          </widget>
+          <widget class="LivePlotWidget" name="ch1_i_graph" native="true"/>
          </item>
         </layout>
        </widget>
@@ -171,69 +159,7 @@
          <item>
           <layout class="QHBoxLayout" name="settings_layout">
            <item>
-            <widget class="QLineEdit" name="ip_set_line">
-             <property name="sizePolicy">
-              <sizepolicy hsizetype="Fixed" vsizetype="Expanding">
-               <horstretch>0</horstretch>
-               <verstretch>0</verstretch>
-              </sizepolicy>
-             </property>
-             <property name="minimumSize">
-              <size>
-               <width>160</width>
-               <height>0</height>
-              </size>
-             </property>
-             <property name="maximumSize">
-              <size>
-               <width>160</width>
-               <height>16777215</height>
-              </size>
-             </property>
-             <property name="text">
-              <string>192.168.1.26</string>
-             </property>
-             <property name="maxLength">
-              <number>15</number>
-             </property>
-             <property name="placeholderText">
-              <string>IP:port for the Thermostat</string>
-             </property>
-             <property name="clearButtonEnabled">
-              <bool>true</bool>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QSpinBox" name="port_set_spin">
-             <property name="sizePolicy">
-              <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-               <horstretch>0</horstretch>
-               <verstretch>0</verstretch>
-              </sizepolicy>
-             </property>
-             <property name="minimumSize">
-              <size>
-               <width>70</width>
-               <height>0</height>
-              </size>
-             </property>
-             <property name="maximumSize">
-              <size>
-               <width>70</width>
-               <height>16777215</height>
-              </size>
-             </property>
-             <property name="maximum">
-              <number>65535</number>
-             </property>
-             <property name="value">
-              <number>23</number>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QPushButton" name="connect_btn">
+            <widget class="QToolButton" name="connect_btn">
              <property name="sizePolicy">
               <sizepolicy hsizetype="Fixed" vsizetype="Expanding">
                <horstretch>0</horstretch>
@@ -260,6 +186,12 @@
              </property>
              <property name="text">
               <string>Connect</string>
+             </property>
+             <property name="popupMode">
+              <enum>QToolButton::MenuButtonPopup</enum>
+             </property>
+             <property name="toolButtonStyle">
+              <enum>Qt::ToolButtonFollowStyle</enum>
              </property>
             </widget>
            </item>
@@ -296,6 +228,9 @@
            </item>
            <item>
             <widget class="QToolButton" name="thermostat_settings">
+             <property name="enabled">
+              <bool>false</bool>
+             </property>
              <property name="text">
               <string notr="true">⚙</string>
              </property>
@@ -305,176 +240,47 @@
             </widget>
            </item>
            <item>
-            <widget class="Line" name="line_0">
-             <property name="sizePolicy">
-              <sizepolicy hsizetype="Expanding" vsizetype="Minimum">
-               <horstretch>0</horstretch>
-               <verstretch>0</verstretch>
-              </sizepolicy>
+            <widget class="QToolButton" name="plot_settings">
+             <property name="toolTip">
+              <string>Plot Settings</string>
              </property>
-             <property name="orientation">
-              <enum>Qt::Vertical</enum>
+             <property name="text">
+              <string>📉</string>
+             </property>
+             <property name="popupMode">
+              <enum>QToolButton::InstantPopup</enum>
              </property>
             </widget>
            </item>
            <item>
-            <widget class="QWidget" name="fan_group" native="true">
-             <property name="enabled">
-              <bool>false</bool>
+            <widget class="QLabel" name="limits_warning">
+             <property name="toolTipDuration">
+              <number>1000000000</number>
              </property>
-             <property name="minimumSize">
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="background_task_lbl">
+             <property name="text">
+              <string>Ready.</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QtWaitingSpinner" name="loading_spinner" native="true"/>
+           </item>
+           <item>
+            <spacer name="horizontalSpacer">
+             <property name="orientation">
+              <enum>Qt::Horizontal</enum>
+             </property>
+             <property name="sizeHint" stdset="0">
               <size>
                <width>40</width>
-               <height>0</height>
+               <height>20</height>
               </size>
              </property>
-             <layout class="QHBoxLayout" name="horizontalLayout_6">
-              <property name="spacing">
-               <number>0</number>
-              </property>
-              <property name="leftMargin">
-               <number>0</number>
-              </property>
-              <property name="topMargin">
-               <number>0</number>
-              </property>
-              <property name="rightMargin">
-               <number>0</number>
-              </property>
-              <property name="bottomMargin">
-               <number>0</number>
-              </property>
-              <item>
-               <layout class="QHBoxLayout" name="gan_layout">
-                <property name="spacing">
-                 <number>9</number>
-                </property>
-                <item>
-                 <widget class="QLabel" name="fan_pwm_warning">
-                  <property name="minimumSize">
-                   <size>
-                    <width>16</width>
-                    <height>0</height>
-                   </size>
-                  </property>
-                  <property name="text">
-                   <string/>
-                  </property>
-                 </widget>
-                </item>
-                <item>
-                 <widget class="QLabel" name="fan_lbl">
-                  <property name="sizePolicy">
-                   <sizepolicy hsizetype="Fixed" vsizetype="Expanding">
-                    <horstretch>0</horstretch>
-                    <verstretch>0</verstretch>
-                   </sizepolicy>
-                  </property>
-                  <property name="minimumSize">
-                   <size>
-                    <width>40</width>
-                    <height>0</height>
-                   </size>
-                  </property>
-                  <property name="maximumSize">
-                   <size>
-                    <width>40</width>
-                    <height>16777215</height>
-                   </size>
-                  </property>
-                  <property name="baseSize">
-                   <size>
-                    <width>40</width>
-                    <height>0</height>
-                   </size>
-                  </property>
-                  <property name="toolTip">
-                   <string>Adjust the fan</string>
-                  </property>
-                  <property name="text">
-                   <string>Fan:</string>
-                  </property>
-                 </widget>
-                </item>
-                <item>
-                 <widget class="QSlider" name="fan_power_slider">
-                  <property name="sizePolicy">
-                   <sizepolicy hsizetype="Fixed" vsizetype="Expanding">
-                    <horstretch>0</horstretch>
-                    <verstretch>0</verstretch>
-                   </sizepolicy>
-                  </property>
-                  <property name="minimumSize">
-                   <size>
-                    <width>200</width>
-                    <height>0</height>
-                   </size>
-                  </property>
-                  <property name="maximumSize">
-                   <size>
-                    <width>200</width>
-                    <height>16777215</height>
-                   </size>
-                  </property>
-                  <property name="baseSize">
-                   <size>
-                    <width>200</width>
-                    <height>0</height>
-                   </size>
-                  </property>
-                  <property name="minimum">
-                   <number>1</number>
-                  </property>
-                  <property name="maximum">
-                   <number>100</number>
-                  </property>
-                  <property name="orientation">
-                   <enum>Qt::Horizontal</enum>
-                  </property>
-                 </widget>
-                </item>
-                <item>
-                 <widget class="QCheckBox" name="fan_auto_box">
-                  <property name="sizePolicy">
-                   <sizepolicy hsizetype="Fixed" vsizetype="Expanding">
-                    <horstretch>0</horstretch>
-                    <verstretch>0</verstretch>
-                   </sizepolicy>
-                  </property>
-                  <property name="minimumSize">
-                   <size>
-                    <width>70</width>
-                    <height>0</height>
-                   </size>
-                  </property>
-                  <property name="maximumSize">
-                   <size>
-                    <width>70</width>
-                    <height>16777215</height>
-                   </size>
-                  </property>
-                  <property name="text">
-                   <string>Auto</string>
-                  </property>
-                 </widget>
-                </item>
-               </layout>
-              </item>
-             </layout>
-            </widget>
-           </item>
-           <item>
-            <widget class="Line" name="line_1">
-             <property name="sizePolicy">
-              <sizepolicy hsizetype="Expanding" vsizetype="Minimum">
-               <horstretch>0</horstretch>
-               <verstretch>0</verstretch>
-              </sizepolicy>
-             </property>
-             <property name="orientation">
-              <enum>Qt::Vertical</enum>
-             </property>
-            </widget>
+            </spacer>
            </item>
            <item>
             <widget class="QWidget" name="report_group" native="true">
@@ -646,18 +452,90 @@
     </item>
    </layout>
   </widget>
+  <action name="actionReset">
+   <property name="text">
+    <string>Reset</string>
+   </property>
+   <property name="toolTip">
+    <string>Reset the Thermostat</string>
+   </property>
+   <property name="menuRole">
+    <enum>QAction::NoRole</enum>
+   </property>
+  </action>
+  <action name="actionEnter_DFU_Mode">
+   <property name="text">
+    <string>Enter DFU Mode</string>
+   </property>
+   <property name="toolTip">
+    <string>Reset thermostat and enter USB device firmware update (DFU) mode</string>
+   </property>
+   <property name="menuRole">
+    <enum>QAction::NoRole</enum>
+   </property>
+  </action>
+  <action name="actionNetwork_Settings">
+   <property name="text">
+    <string>Network Settings</string>
+   </property>
+   <property name="toolTip">
+    <string>Configure IPv4 address, netmask length, and optional default gateway</string>
+   </property>
+   <property name="menuRole">
+    <enum>QAction::NoRole</enum>
+   </property>
+  </action>
+  <action name="actionAbout_Thermostat">
+   <property name="text">
+    <string>About Thermostat</string>
+   </property>
+   <property name="toolTip">
+    <string>Show Thermostat hardware revision, and settings related to i</string>
+   </property>
+   <property name="menuRole">
+    <enum>QAction::NoRole</enum>
+   </property>
+  </action>
+  <action name="actionLoad_all_configs">
+   <property name="text">
+    <string>Load all channel configs from flash</string>
+   </property>
+   <property name="toolTip">
+    <string>Restore configuration for all channels from flash</string>
+   </property>
+   <property name="menuRole">
+    <enum>QAction::NoRole</enum>
+   </property>
+  </action>
+  <action name="actionSave_all_configs">
+   <property name="text">
+    <string>Save all channel configs to flash</string>
+   </property>
+   <property name="toolTip">
+    <string>Save configuration for all channels to flash</string>
+   </property>
+   <property name="menuRole">
+    <enum>QAction::NoRole</enum>
+   </property>
+  </action>
  </widget>
  <customwidgets>
-  <customwidget>
-   <class>PlotWidget</class>
-   <extends>QWidget</extends>
-   <header>pyqtgraph</header>
-   <container>1</container>
-  </customwidget>
   <customwidget>
    <class>ParameterTree</class>
    <extends>QWidget</extends>
    <header>pyqtgraph.parametertree</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>LivePlotWidget</class>
+   <extends>QWidget</extends>
+   <header>pglive.sources.live_plot_widget</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>QtWaitingSpinner</class>
+   <extends>QWidget</extends>
+   <header>waitingspinnerwidget</header>
    <container>1</container>
   </customwidget>
  </customwidgets>

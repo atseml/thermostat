@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pytec"
+version = "0.0"
+authors = [{name = "M-Labs"}]
+description = "Control TEC"
+urls.Repository = "https://git.m-labs.hk/M-Labs/thermostat"
+license = {text = "GPLv3"}
+
+[project.gui-scripts]
+tec_qt = "tec_qt:main"
+
+[tool.setuptools]
+packages.find = {}
+py-modules = ["aioexample", "autotune", "example", "plot", "tec_qt", "ui_tec_qt", "waitingspinnerwidget"]

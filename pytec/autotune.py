@@ -222,20 +222,20 @@ class PIDAutotune:
             # calculate ultimate gain
             self._Ku = 4.0 * self._outputstep / \
                 (self._induced_amplitude * math.pi)
-            print('Ku: {0}'.format(self._Ku))
+            logging.debug('Ku: {0}'.format(self._Ku))
 
             # calculate ultimate period in seconds
             period1 = self._peak_timestamps[3] - self._peak_timestamps[1]
             period2 = self._peak_timestamps[4] - self._peak_timestamps[2]
             self._Pu = 0.5 * (period1 + period2) / 1000.0
-            print('Pu: {0}'.format(self._Pu))
+            logging.debug('Pu: {0}'.format(self._Pu))
 
             for rule in self._tuning_rules:
                 params = self.get_pid_parameters(rule)
-                print('rule: {0}'.format(rule))
-                print('Kp: {0}'.format(params.Kp))
-                print('Ki: {0}'.format(params.Ki))
-                print('Kd: {0}'.format(params.Kd))
+                logging.debug('rule: {0}'.format(rule))
+                logging.debug('Kp: {0}'.format(params.Kp))
+                logging.debug('Ki: {0}'.format(params.Ki))
+                logging.debug('Kd: {0}'.format(params.Kd))
 
             return True
         return False

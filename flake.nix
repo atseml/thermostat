@@ -68,13 +68,37 @@
         propagatedBuildInputs = [ pkgs.python3Packages.pyqt6 ];
       };
 
+      pyqtgraph = pkgs.python3Packages.buildPythonPackage rec {
+        pname = "pyqtgraph";
+        version = "0.13.3";
+        format = "pyproject";
+        src = pkgs.fetchPypi {
+          inherit pname version;
+          sha256 = "sha256-WBCNhBHHBU4IQdi3ke6F4QH8KWubNZwOAd3jipj/Ks4=";
+        };
+        propagatedBuildInputs = with pkgs.python3Packages; [ numpy pyqt6 ];
+      };
+
+      pglive = pkgs.python3Packages.buildPythonPackage rec {
+        pname = "pglive";
+        version = "0.7.2";
+        format = "pyproject";
+        src = pkgs.fetchPypi {
+          inherit pname version;
+          sha256 = "sha256-jqj8X6H1N5mJQ4OrY5ANqRB0YJByqg/bNneEALWmH1A=";
+        };
+        buildInputs = [ pkgs.python3Packages.poetry-core ];
+        propagatedBuildInputs = [ pyqtgraph pkgs.python3Packages.numpy ];
+      };
+
       thermostat_gui = pkgs.python3Packages.buildPythonPackage {
         pname = "thermostat_gui";
         version = "0.0.0";
+        format = "pyproject";
         src = "${self}/pytec";
 
         nativeBuildInputs = [ pkgs.qt6.wrapQtAppsHook ];
-        propagatedBuildInputs = [ pkgs.qt6.qtbase ] ++ (with pkgs.python3Packages; [ pyqtgraph pyqt6 qasync ]);
+        propagatedBuildInputs = [ pkgs.qt6.qtbase ] ++ (with pkgs.python3Packages; [ pyqtgraph pyqt6 qasync pglive ]);
 
         dontWrapQtApps = true;
         postFixup = ''
@@ -100,7 +124,7 @@
         buildInputs = with pkgs; [
           rust openocd dfu-util
           ] ++ (with python3Packages; [
-            numpy matplotlib pyqtgraph setuptools pyqt6 qasync
+            numpy matplotlib pyqtgraph setuptools pyqt6 qasync pglive
           ]);
       };
       defaultPackage.x86_64-linux = thermostat;

@@ -14,5 +14,5 @@ setup(
             "tec_qt = tec_qt:main",
         ]
     },
-    py_modules=['tec_qt', 'ui_tec_qt'],
+    py_modules=['tec_qt', 'ui_tec_qt', 'autotune', 'waitingspinnerwidget'],
 )

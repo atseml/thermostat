@@ -5,44 +5,53 @@ import logging
 class CommandError(Exception):
     pass
 
+class StoppedConnecting(Exception):
+    pass
+
 class Client:
     def __init__(self):
         self._reader = None
         self._writer = None
         self._connecting_task = None
         self._command_lock = asyncio.Lock()
+        self._report_mode_on = False
+        self.timeout = None
 
-    async def connect(self, host='192.168.1.26', port=23, timeout=None):
-        """Connect to the TEC with host and port, throws TimeoutError if
-        unable to connect. Returns True if not cancelled with disconnect.
+    async def start_session(self, host='192.168.1.26', port=23, timeout=None):
+        """Start session to Thermostat at specified host and port.
+        Throws StoppedConnecting if disconnect was called while connecting.
+        Throws asyncio.TimeoutError if timeout was exceeded.
 
         Example::
-            client = aioclient.Client()
-            connected = await client.connect()
-            if connected:
-                return
+            client = Client()
+            try:
+                await client.start_session()
+            except StoppedConnecting:
+                print("Stopped connecting")
         """
-        self._connecting_task = asyncio.create_task(asyncio.open_connection(host, port))
+        self._connecting_task = asyncio.create_task(
+            asyncio.wait_for(asyncio.open_connection(host, port), timeout)
+        )
+        self.timeout = timeout
         try:
             self._reader, self._writer = await self._connecting_task
         except asyncio.CancelledError:
-            return False
+            raise StoppedConnecting
         finally:
             self._connecting_task = None
 
         await self._check_zero_limits()
-        return True
 
-    def is_connecting(self):
+    def connecting(self):
         """Returns True if client is connecting"""
         return self._connecting_task is not None
 
-    def is_connected(self):
+    def connected(self):
         """Returns True if client is connected"""
         return self._writer is not None
 
-    async def disconnect(self):
-        """Disconnect the client if connected, cancel connection if connecting"""
+    async def end_session(self):
+        """End session to Thermostat if connected, cancel connection if connecting"""
         if self._connecting_task is not None:
             self._connecting_task.cancel()
 
@@ -64,15 +73,19 @@ class Client:
 
     async def _read_line(self):
         # read 1 line
-        chunk = await self._reader.readline()
+        chunk = await asyncio.wait_for(self._reader.readline(), self.timeout) # Only wait for response until timeout
         return chunk.decode('utf-8', errors='ignore')
+
+    async def _read_write(self, command):
+        self._writer.write(((" ".join(command)).strip() + "\n").encode('utf-8'))
+        await self._writer.drain()
+
+        return await self._read_line()
 
     async def _command(self, *command):
         async with self._command_lock:
-            self._writer.write(((" ".join(command)).strip() + "\n").encode('utf-8'))
-            await self._writer.drain()
-
-            line = await self._read_line()
+            # protect the read-write process from being cancelled midway
+            line = await asyncio.shield(self._read_write(command))
 
         response = json.loads(line)
         logging.debug(f"{command}: {response}")
@@ -147,6 +160,14 @@ class Client:
         """
         return await self._get_conf("postfilter")
 
+    async def get_fan(self):
+        """Get Thermostat current fan settings"""
+        return await self._command("fan")
+
+    async def report(self):
+        """Obtain one-time report on measurement values"""
+        return await self._command("report")
+
     async def report_mode(self):
         """Start reporting measurement values
 
@@ -167,15 +188,22 @@ class Client:
              'pid_output': 2.067581958092247}
         """
         await self._command("report mode", "on")
+        self._report_mode_on = True
 
-        while True:
-            line = await self._read_line()
+        while self._report_mode_on:
+            async with self._command_lock:
+                line = await self._read_line()
             if not line:
                 break
             try:
                 yield json.loads(line)
             except json.decoder.JSONDecodeError:
                 pass
+
+        await self._command("report mode", "off")
+
+    def stop_report_mode(self):
+        self._report_mode_on = False
 
     async def set_param(self, topic, channel, field="", value=""):
         """Set configuration parameters
@@ -195,23 +223,57 @@ class Client:
             value = str(value)
         await self._command(topic, str(channel), field, value)
 
+    async def set_fan(self, power="auto"):
+        """Set fan power"""
+        await self._command("fan", str(power))
+
+    async def set_fcurve(self, a=1.0, b=0.0, c=0.0):
+        """Set fan curve"""
+        await self._command("fcurve", str(a), str(b), str(c))
+
     async def power_up(self, channel, target):
         """Start closed-loop mode"""
         await self.set_param("pid", channel, "target", value=target)
         await self.set_param("pwm", channel, "pid")
 
-    async def save_config(self):
+    async def save_config(self, channel=""):
         """Save current configuration to EEPROM"""
-        await self._command("save")
+        await self._command("save", str(channel))
 
-    async def load_config(self):
+    async def load_config(self, channel=""):
         """Load current configuration from EEPROM"""
-        await self._command("load")
+        await self._command("load", str(channel))
+        if channel == "":
+            await self._read_line() # Read the extra {}
 
     async def hw_rev(self):
         """Get Thermostat hardware revision"""
         return await self._command("hwrev")
 
-    async def fan(self):
-        """Get Thermostat current fan settings"""
-        return await self._command("fan")
+    async def reset(self):
+        """Reset the Thermostat
+        
+        The client is disconnected as the TCP session is terminated.
+        """
+        async with self._command_lock:
+            self._writer.write("reset\n".encode('utf-8'))
+            await self._writer.drain()
+
+        await self.end_session()
+
+    async def dfu(self):
+        """Put the Thermostat in DFU update mode
+        
+        The client is disconnected as the Thermostat stops responding to
+        TCP commands in DFU update mode. The only way to exit it is by
+        power-cycling.
+        """
+        async with self._command_lock:
+            self._writer.write("dfu\n".encode('utf-8'))
+            await self._writer.drain()
+
+        await self.end_session()
+
+    async def ipv4(self):
+        """Get the IPv4 settings of the Thermostat"""
+        return await self._command('ipv4')
