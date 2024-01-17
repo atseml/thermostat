@@ -138,6 +138,7 @@ formatted as line-delimited JSON.
 | `fcurve <a> <b> <c>`                      | Set fan controller curve coefficients (see *Fan control* section)             |
 | `fcurve default`                          | Set fan controller curve coefficients to defaults (see *Fan control* section) |
 | `hwrev`                                   | Show hardware revision, and settings related to it                            |
+| `firmware`                                | Show firmware details                                                         |
 
 
 ## USB

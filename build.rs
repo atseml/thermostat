@@ -15,4 +15,7 @@ fn main() {
     // Only re-run the build script when memory.x is changed,
     // instead of when any part of the source code changes.
     println!("cargo:rerun-if-changed=memory.x");
+
+    // Embed build-time information, such as the Git hash.
+    built::write_built_file().expect("Failed to acquire build-time information");
 }

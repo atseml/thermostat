@@ -194,6 +194,7 @@ pub enum Command {
     },
     FanCurveDefaults,
     ShowHWRev,
+    ShowFirmware,
 }
 
 fn end(input: &[u8]) -> IResult<&[u8], ()> {
@@ -578,6 +579,7 @@ fn command(input: &[u8]) -> IResult<&[u8], Result<Command, Error>> {
         fan,
         fan_curve,
         value(Ok(Command::ShowHWRev), tag("hwrev")),
+        value(Ok(Command::ShowFirmware), tag("firmware")),
     ))(input)
 }
 
@@ -866,5 +868,11 @@ mod test {
     fn parse_hwrev() {
         let command = Command::parse(b"hwrev");
         assert_eq!(command, Ok(Command::ShowHWRev));
+    }
+
+    #[test]
+    fn parse_firmware() {
+        let command = Command::parse(b"firmware");
+        assert_eq!(command, Ok(Command::ShowFirmware));
     }
 }

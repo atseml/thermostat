@@ -50,6 +50,7 @@ mod flash_store;
 use command_handler::Handler;
 mod fan_ctrl;
 use fan_ctrl::FanCtrl;
+mod firmware;
 mod hw_rev;
 
 const HSE: MegaHertz = MegaHertz(8);

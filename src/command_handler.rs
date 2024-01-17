@@ -5,7 +5,7 @@ use super::{
         BpParameter, CenterPoint, Command, Ipv4Config, PidParameter, Polarity, PwmPin, ShowCommand,
     },
     config::ChannelConfig,
-    dfu,
+    dfu, firmware,
     flash_store::FlashStore,
     hw_rev::HWRev,
     net, FanCtrl, CHANNEL_CONFIG_KEY,
@@ -460,6 +460,20 @@ impl Handler {
         }
     }
 
+    fn show_firmware(socket: &mut TcpSocket) -> Result<Handler, Error> {
+        match firmware::summary() {
+            Ok(buf) => {
+                send_line(socket, &buf);
+                Ok(Handler::Handled)
+            }
+            Err(e) => {
+                error!("unable to serialize Firmware summary: {:?}", e);
+                let _ = writeln!(socket, "{{\"error\":\"{:?}\"}}", e);
+                Err(Error::Report)
+            }
+        }
+    }
+
     pub fn handle_command(
         command: Command,
         socket: &mut TcpSocket,
@@ -520,6 +534,7 @@ impl Handler {
             }
             Command::FanCurveDefaults => Handler::fan_defaults(socket, fan_ctrl),
             Command::ShowHWRev => Handler::show_hwrev(socket, hwrev),
+            Command::ShowFirmware => Handler::show_firmware(socket),
         }
     }
 }
