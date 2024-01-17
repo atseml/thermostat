@@ -39,7 +39,7 @@
           };
         };
 
-        nativeBuildInputs = [ pkgs.llvm ];
+        nativeBuildInputs = [ pkgs.gcc-arm-embedded ];
 
         buildPhase = ''
           cargo build --release --bin thermostat
@@ -49,7 +49,7 @@
           mkdir -p $out $out/nix-support
           cp target/thumbv7em-none-eabihf/release/thermostat $out/thermostat.elf
           echo file binary-dist $out/thermostat.elf >> $out/nix-support/hydra-build-products
-          llvm-objcopy -O binary target/thumbv7em-none-eabihf/release/thermostat $out/thermostat.bin
+          arm-none-eabi-objcopy -O binary target/thumbv7em-none-eabihf/release/thermostat $out/thermostat.bin
           echo file binary-dist $out/thermostat.bin >> $out/nix-support/hydra-build-products
         '';
 
@@ -67,7 +67,8 @@
       devShell.x86_64-linux = pkgs.mkShell {
         name = "thermostat-dev-shell";
         buildInputs = with pkgs; [
-          rust openocd dfu-util
+          rust gcc-arm-embedded
+          openocd dfu-util
           ] ++ (with python3Packages; [
             numpy matplotlib
           ]);
