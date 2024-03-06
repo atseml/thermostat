@@ -118,7 +118,11 @@ impl<'a> Channels<'a> {
 
     pub fn get_i(&mut self, channel: usize) -> ElectricCurrent {
         let i_set = self.channel_state(channel).i_set;
-        i_set
+        if self.channel_state(channel).swap_tec_polarity {
+            -i_set
+        } else {
+            i_set
+        }
     }
 
     /// i_set DAC
@@ -137,13 +141,16 @@ impl<'a> Channels<'a> {
         // Silently clamp i_set
         let i_ceiling = ElectricCurrent::new::<ampere>(MAX_TEC_I);
         let i_floor = ElectricCurrent::new::<ampere>(-MAX_TEC_I);
-        let i_set = i_set.min(i_ceiling).max(i_floor);
+        let mut i_set = i_set.min(i_ceiling).max(i_floor);
 
         let vref_meas = match channel.into() {
             0 => self.channel0.vref_meas,
             1 => self.channel1.vref_meas,
             _ => unreachable!(),
         };
+        if self.channel_state(channel).swap_tec_polarity {
+            i_set = -i_set;
+        }
         let center_point = vref_meas;
         let r_sense = ElectricalResistance::new::<ohm>(R_SENSE);
         let voltage = i_set * 10.0 * r_sense + center_point;
@@ -390,7 +397,12 @@ impl<'a> Channels<'a> {
 
     // Get current passing through TEC
     pub fn get_tec_i(&mut self, channel: usize) -> ElectricCurrent {
-        (self.read_itec(channel) - self.read_vref(channel)) / ElectricalResistance::new::<ohm>(0.4)
+        let tec_i = (self.read_itec(channel) - self.read_vref(channel)) / ElectricalResistance::new::<ohm>(0.4);
+        if self.channel_state(channel).swap_tec_polarity {
+            -tec_i
+        } else {
+            tec_i
+        }
     }
 
     // Get voltage across TEC

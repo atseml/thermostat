@@ -130,6 +130,7 @@ formatted as line-delimited JSON.
 | `fcurve <a> <b> <c>`             | Set fan controller curve coefficients (see *Fan control* section)             |
 | `fcurve default`                 | Set fan controller curve coefficients to defaults (see *Fan control* section) |
 | `hwrev`                          | Show hardware revision, and settings related to it                            |
+| `swap [0/1]`                     | Swap TEC polarities for channel all/0/1 (For use with Zotino)                 |
 
 
 ## USB
@@ -180,9 +181,11 @@ postfilter rate can be tuned with the `postfilter` command.
 
 ## Thermo-Electric Cooling (TEC)
 
-- Connect TEC module device 0 to TEC0- and TEC0+.
-- Connect TEC module device 1 to TEC1- and TEC1+.
-- The GND pin is for shielding not for sinking TEC module currents.
+- Connect TEC module device 0 to TEC0-/T0- and TEC0+/T0+.
+- Connect TEC module device 1 to TEC1-/T1- and TEC1+/T1+.
+- The GND pin is for shielding, not for sinking TEC module currents.
+
+For Zotino temperature regulation, connect an IDC cable to the internal Zotino header labeled TEC1/TEC2. For pre 3.0 Thermostats, use the `swap` command for those channels.
 
 When using a TEC module with the Thermostat, the Thermostat expects the thermal load (where the thermistor is located) to cool down with a positive software current set point, and heat up with a negative current set point.
 

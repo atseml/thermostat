@@ -22,6 +22,7 @@ pub struct ChannelConfig {
     pwm: PwmLimits,
     /// uses variant `PostFilter::Invalid` instead of `None` to save space
     adc_postfilter: PostFilter,
+    swap_tec_polarity: bool,
 }
 
 impl ChannelConfig {
@@ -41,6 +42,7 @@ impl ChannelConfig {
             sh: state.sh.clone(),
             pwm,
             adc_postfilter,
+            swap_tec_polarity: state.swap_tec_polarity,
         }
     }
 
@@ -51,6 +53,7 @@ impl ChannelConfig {
         state.pid.target = self.pid_target.into();
         state.pid_engaged = self.pid_engaged;
         state.sh = self.sh.clone();
+        state.swap_tec_polarity = self.swap_tec_polarity;
 
         self.pwm.apply(channels, channel);
 

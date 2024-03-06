@@ -35,6 +35,7 @@ pub struct ChannelState {
     pub pid_engaged: bool,
     pub pid: pid::Controller,
     pub sh: sh::Parameters,
+    pub swap_tec_polarity: bool,
 }
 
 impl ChannelState {
@@ -51,6 +52,7 @@ impl ChannelState {
             pid_engaged: false,
             pid: pid::Controller::new(pid::Parameters::default()),
             sh: sh::Parameters::default(),
+            swap_tec_polarity: false,
         }
     }
 

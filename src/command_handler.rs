@@ -412,6 +412,16 @@ impl Handler {
         }
     }
 
+    fn swap_tec_polarity (socket: &mut TcpSocket, channels: &mut Channels, channel: Option<usize>) -> Result<Handler, Error> {
+        for c in 0..CHANNELS {
+            if channel.is_none() || channel == Some(c) {
+                channels.channel_state(c).swap_tec_polarity = !channels.channel_state(c).swap_tec_polarity;
+            }
+        }
+        send_line(socket, b"{}");
+        Ok(Handler::Handled)
+    }
+
     pub fn handle_command(command: Command, socket: &mut TcpSocket, channels: &mut Channels, session: &Session, store: &mut FlashStore, ipv4_config: &mut Ipv4Config, fan_ctrl: &mut FanCtrl, hwrev: HWRev) -> Result<Self, Error> {
         match command {
             Command::Quit => Ok(Handler::CloseSocket),
@@ -441,6 +451,7 @@ impl Handler {
             Command::FanCurve { k_a, k_b, k_c } => Handler::fan_curve(socket, fan_ctrl, k_a, k_b, k_c),
             Command::FanCurveDefaults => Handler::fan_defaults(socket, fan_ctrl),
             Command::ShowHWRev => Handler::show_hwrev(socket, hwrev),
+            Command::SwapTECPolarity { channel } => Handler::swap_tec_polarity(socket, channels, channel),
         }
     }
 }

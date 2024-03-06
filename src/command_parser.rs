@@ -191,6 +191,9 @@ pub enum Command {
     },
     FanCurveDefaults,
     ShowHWRev,
+    SwapTECPolarity {
+        channel: Option<usize>,
+    },
 }
 
 fn end(input: &[u8]) -> IResult<&[u8], ()> {
@@ -584,6 +587,22 @@ fn fan_curve(input: &[u8]) -> IResult<&[u8], Result<Command, Error>> {
     ))(input)
 }
 
+fn swap(input: &[u8]) -> IResult<&[u8], Result<Command, Error>> {
+    let (input, _) = tag("swap")(input)?;
+    let (input, channel) = alt((
+        |input| {
+            let (input, _) = whitespace(input)?;
+            let (input, channel) = channel(input)?;
+            let (input, _) = end(input)?;
+            Ok((input, Some(channel)))
+        },
+        value(None, end)
+    ))(input)?;
+
+    let result = Ok(Command::SwapTECPolarity { channel });
+    Ok((input, result))
+}
+
 fn command(input: &[u8]) -> IResult<&[u8], Result<Command, Error>> {
     alt((value(Ok(Command::Quit), tag("quit")),
          load,
@@ -600,6 +619,7 @@ fn command(input: &[u8]) -> IResult<&[u8], Result<Command, Error>> {
          fan,
          fan_curve,
          value(Ok(Command::ShowHWRev), tag("hwrev")),
+         swap,
     ))(input)
 }
 
