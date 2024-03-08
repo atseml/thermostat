@@ -474,6 +474,7 @@ impl<'a> Channels<'a> {
             temperature: state.get_temperature()
                 .map(|temperature| temperature.get::<degree_celsius>()),
             pid_engaged: state.pid_engaged,
+            current_swapped: state.swap_tec_polarity,
             i_set,
             dac_value,
             dac_feedback: self.read_dac_feedback(channel),
@@ -571,6 +572,7 @@ pub struct Report {
     sens: Option<ElectricalResistance>,
     temperature: Option<f64>,
     pid_engaged: bool,
+    current_swapped: bool,
     i_set: ElectricCurrent,
     dac_value: ElectricPotential,
     dac_feedback: ElectricPotential,
