@@ -14,7 +14,7 @@
          "readonly": true
       },
       {
-         "name": "Output Config",
+         "name": "Output Settings",
          "expanded": true,
          "type": "group",
          "children": [
@@ -128,9 +128,10 @@
          ]
       },
       {
-         "name": "Thermistor Config",
+         "name": "Thermistor Settings",
          "expanded": true,
          "type": "group",
+         "tip": "Settings of the connected Thermistor",
          "children": [
             {
                "name": "T₀",
@@ -194,7 +195,7 @@
          ]
       },
       {
-         "name": "PID Config",
+         "name": "PID Settings",
          "expanded": true,
          "type": "group",
          "children": [
@@ -325,12 +326,12 @@
       {
          "name": "Save to flash",
          "type": "action",
-         "tip": "Save config to thermostat, applies on reset"
+         "tip": "Save settings to thermostat, applies on reset"
       },
       {
          "name": "Load from flash",
          "type": "action",
-         "tip": "Load config from flash"
+         "tip": "Load settings from flash"
       }
    ]
 }
