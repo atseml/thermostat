@@ -146,7 +146,7 @@ class CtrlPanel(QObject):
 
                     # Handle thermostat command irregularities
                     match inner_param.name(), new_value:
-                        case "Postfilter Rate", None:
+                        case "Rate", None:
                             thermostat_param = thermostat_param.copy()
                             thermostat_param["field"] = "off"
                             new_value = ""
@@ -246,9 +246,9 @@ class CtrlPanel(QObject):
         for postfilter_params in postfilter_data:
             channel = postfilter_params["channel"]
             with QSignalBlocker(self.params[channel]):
-                self.params[channel].child(
-                    "Thermistor Settings", "Postfilter Rate"
-                ).setValue(postfilter_params["rate"])
+                self.params[channel].child("Postfilter Settings", "Rate").setValue(
+                    postfilter_params["rate"]
+                )
 
     def update_pid_autotune(self, ch, state):
         match state:

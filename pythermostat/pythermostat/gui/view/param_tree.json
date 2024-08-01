@@ -189,9 +189,15 @@
                   "field": "b"
                },
                "lock": false
-            },
+            }
+         ]
+      },
+      {
+         "name": "Postfilter Settings",
+         "type": "group",
+         "children": [
             {
-               "name": "Postfilter Rate",
+               "name": "Rate",
                "type": "list",
                "value": 16.67,
                "thermostat:set_param": {
