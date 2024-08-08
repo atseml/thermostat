@@ -387,22 +387,22 @@ impl Channels {
         }
     }
 
-    pub fn get_max_v(&mut self, channel: usize) -> (ElectricPotential, ElectricPotential) {
+    pub fn get_max_v(&mut self, channel: usize) -> (ElectricPotential, ElectricPotential, ElectricPotential) {
         let max = 4.0 * ElectricPotential::new::<volt>(3.3);
         let duty = self.get_pwm(channel, PwmPin::MaxV);
-        (duty * max, MAX_TEC_V)
+        (duty * max, ElectricPotential::zero(), MAX_TEC_V)
     }
 
-    pub fn get_max_i_pos(&mut self, channel: usize) -> (ElectricCurrent, ElectricCurrent) {
+    pub fn get_max_i_pos(&mut self, channel: usize) -> (ElectricCurrent, ElectricCurrent, ElectricCurrent) {
         let max = ElectricCurrent::new::<ampere>(3.0);
         let duty = self.get_pwm(channel, PwmPin::MaxIPos);
-        (duty * max, MAX_TEC_I)
+        (duty * max, ElectricCurrent::zero(), MAX_TEC_I)
     }
 
-    pub fn get_max_i_neg(&mut self, channel: usize) -> (ElectricCurrent, ElectricCurrent) {
+    pub fn get_max_i_neg(&mut self, channel: usize) -> (ElectricCurrent, ElectricCurrent, ElectricCurrent) {
         let max = ElectricCurrent::new::<ampere>(3.0);
         let duty = self.get_pwm(channel, PwmPin::MaxINeg);
-        (duty * max, MAX_TEC_I)
+        (duty * max, ElectricCurrent::zero(), MAX_TEC_I)
     }
 
     // Get current passing through TEC
@@ -518,7 +518,7 @@ impl Channels {
         PwmSummary {
             channel,
             center: CenterPointJson(self.channel_state(channel).center.clone()),
-            i_set: (self.get_i(channel), MAX_TEC_I).into(),
+            i_set: (self.get_i(channel), ElectricCurrent::zero(), MAX_TEC_I).into(),
             max_v: self.get_max_v(channel).into(),
             max_i_pos: self.get_max_i_pos(channel).into(),
             max_i_neg: self.get_max_i_neg(channel).into(),
@@ -606,12 +606,13 @@ impl Serialize for CenterPointJson {
 #[derive(Serialize)]
 pub struct PwmSummaryField<T: Serialize> {
     value: T,
+    min: T,
     max: T,
 }
 
-impl<T: Serialize> From<(T, T)> for PwmSummaryField<T> {
-    fn from((value, max): (T, T)) -> Self {
-        PwmSummaryField { value, max }
+impl<T: Serialize> From<(T, T, T)> for PwmSummaryField<T> {
+    fn from((value, min, max): (T, T, T)) -> Self {
+        PwmSummaryField { value, min, max }
     }
 }
 
