@@ -38,6 +38,7 @@ use command_parser::Ipv4Config;
 mod b_parameter;
 mod channels;
 mod pid;
+mod pwm_limits;
 mod timer;
 use channels::{Channels, CHANNELS};
 mod channel;

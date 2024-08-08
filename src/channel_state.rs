@@ -1,8 +1,8 @@
 use crate::{
     ad7172, b_parameter as bp,
     command_parser::{CenterPoint, Polarity},
-    config::PwmLimits,
     pid,
+    pwm_limits::PwmLimits,
 };
 use num_traits::Zero;
 use smoltcp::time::{Duration, Instant};
