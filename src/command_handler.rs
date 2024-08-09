@@ -207,8 +207,8 @@ impl Handler {
     }
 
     fn set_center_point(socket: &mut TcpSocket, channels: &mut Channels, channel: usize, center: CenterPoint) -> Result<Handler, Error> {
-        let i_set = channels.get_i(channel);
         let state = channels.channel_state(channel);
+        let i_set = state.i_set;
         state.center = center;
         if !state.pid_engaged {
             channels.set_i(channel, i_set);

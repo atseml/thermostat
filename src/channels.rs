@@ -134,9 +134,12 @@ impl Channels {
         voltage
     }
 
-    pub fn get_i(&mut self, channel: usize) -> ElectricCurrent {
-        let i_set = self.channel_state(channel).i_set;
-        i_set
+    pub fn get_i(&mut self, channel: usize) -> (ElectricCurrent, ElectricCurrent) {
+        let center_point = self.get_center(channel);
+        let r_sense = ElectricalResistance::new::<ohm>(R_SENSE);
+        let voltage = self.get_dac(channel);
+        let i_set = (voltage - center_point) / (10.0 * r_sense);
+        (i_set, MAX_TEC_I)
     }
 
     /// i_set DAC
@@ -464,7 +467,7 @@ impl Channels {
     }
 
     fn report(&mut self, channel: usize) -> Report {
-        let i_set = self.get_i(channel);
+        let i_set = self.channel_state(channel).i_set;
         let i_tec = self.adc_read(channel, PinsAdcReadTarget::ITec, 16);
         let tec_i = self.get_tec_i(channel);
         let dac_value = self.get_dac(channel);
@@ -518,7 +521,7 @@ impl Channels {
         PwmSummary {
             channel,
             center: CenterPointJson(self.channel_state(channel).center.clone()),
-            i_set: (self.get_i(channel), MAX_TEC_I).into(),
+            i_set: self.get_i(channel).into(),
             max_v: self.get_max_v(channel).into(),
             max_i_pos: self.get_max_i_pos(channel).into(),
             max_i_neg: self.get_max_i_neg(channel).into(),
