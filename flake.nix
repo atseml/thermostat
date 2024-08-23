@@ -117,23 +117,14 @@
 
       devShells.x86_64-linux.default = pkgs.mkShellNoCC {
         name = "thermostat-dev-shell";
-        packages =
-          with pkgs;
-          [
-            rust
-            llvm
-            openocd
-            dfu-util
-            rlwrap
-          ]
-          ++ (with python3Packages; [
-            numpy
-            matplotlib
-            pyqtgraph
-            pyqt6
-            qasync
-            pglive
-          ]);
+        packages = with pkgs; [
+          rust
+          llvm
+          openocd
+          dfu-util
+          rlwrap
+          pythermostat
+        ];
         shellHook = ''
           export PYTHONPATH=`git rev-parse --show-toplevel`/pythermostat:$PYTHONPATH
         '';
