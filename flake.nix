@@ -134,6 +134,9 @@
             qasync
             pglive
           ]);
+        shellHook = ''
+          export PYTHONPATH=`git rev-parse --show-toplevel`/pythermostat:$PYTHONPATH
+        '';
       };
 
       formatter.x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.nixfmt-rfc-style;
