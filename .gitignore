@@ -3,3 +3,6 @@ result
 *.bin
 
 __pycache__/
+*.egg-info/
+build/
+*.pyc
