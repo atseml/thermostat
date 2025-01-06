@@ -10,10 +10,10 @@ The thermal load under control should be well insulated from the surrounding for
 
 When tuning Thermostat PID parameters, it is helpful to view the temperature, PID output and other data in the form of a real time graph.
 
-To use the Python real-time plotting utility, run
+To use the Python real-time plotting utility, install the PyThermostat library (e.g. with `pip install ../pythermostat`) and run
 
 ```shell
-python pythermostat/pythermostat/plot.py
+thermostat_plot
 ```
 
 ![default view](./assets/default%20view.png)
@@ -46,10 +46,10 @@ Below are some general guidelines for manually tuning PID loops. Note that every
 
 A PID auto tuning utility is provided in the PyThermostat library. The auto tuning utility drives the the load to a controlled oscillation, observes the ultimate gain and oscillation period and calculates a set of PID parameters.
 
-To run the auto tuning utility, run
+To run the auto tuning utility, install the PyThermostat library (e.g. with `pip install ../pythermostat`) and run
 
 ```shell
-python pythermostat/pythermostat/autotune.py
+thermostat_autotune
 ```
 
 After some time, the auto tuning utility will output the auto tuning results, below is a sample output
