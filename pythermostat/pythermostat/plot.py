@@ -1,8 +1,7 @@
 import time
-import numpy as np
+from threading import Thread, Lock
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
-from threading import Thread, Lock
 from pythermostat.client import Client
 
 
