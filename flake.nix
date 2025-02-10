@@ -42,6 +42,13 @@
 
         nativeBuildInputs = [ pkgs.llvm ];
 
+        patches = pkgs.lib.lists.optional (self ? rev || self ? dirtyRev) (
+          pkgs.replaceVars ./add-git-info.patch {
+            gitDirty = pkgs.lib.boolToString (self ? dirtyRev);
+            gitCommitHash = self.rev or (pkgs.lib.removeSuffix "-dirty" self.dirtyRev);
+          }
+        );
+
         buildPhase = ''
           cargo build --release --bin thermostat
         '';
