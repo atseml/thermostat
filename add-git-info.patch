@@ -8,9 +8,9 @@ index 03826ef7..35551b5c 100644
 +use std::fs::{read_to_string, write, File};
  use std::io::Write;
  use std::path::PathBuf;
-@@ -19,3 +19,14 @@ fn main() {
-     // Embed build-time information, such as the Git hash.
-     built::write_built_file().expect("Failed to acquire build-time information");
+@@ -25,3 +25,14 @@ fn main() {
+             .unwrap();
+     }
 +    let built_info = read_to_string(out.join("built.rs"))
 +        .unwrap()
 +        .replace(
