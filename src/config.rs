@@ -64,7 +64,7 @@ impl ChannelConfig {
             PostFilter::Invalid => None,
             adc_postfilter => Some(adc_postfilter),
         };
-        let _ = channels.set_postfilter(channel as u8, adc_postfilter);
+        channels.set_postfilter(channel as u8, adc_postfilter);
         let _ = channels.set_i(channel, self.i_set);
         channels.set_polarity(channel, self.polarity.clone());
     }
