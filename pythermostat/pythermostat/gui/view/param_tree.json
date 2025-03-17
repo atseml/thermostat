@@ -218,7 +218,6 @@
                "name": "Kp",
                "type": "float",
                "step": 0.1,
-               "suffix": "",
                "compactHeight": false,
                "thermostat:set_param": {
                   "topic": "pid",
@@ -230,7 +229,6 @@
                "name": "Ki",
                "type": "float",
                "step": 0.1,
-               "suffix": "Hz",
                "compactHeight": false,
                "thermostat:set_param": {
                   "topic": "pid",
@@ -242,7 +240,6 @@
                "name": "Kd",
                "type": "float",
                "step": 0.1,
-               "suffix": "s",
                "compactHeight": false,
                "thermostat:set_param": {
                   "topic": "pid",

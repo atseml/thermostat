@@ -92,6 +92,7 @@ class PIDAutotune:
 
         self._inputs = deque(maxlen=round(lookback / sampletime))
         self._setpoint = setpoint
+        self._sampletime = sampletime
         self._outputstep = out_step
         self._noiseband = noiseband
         self._out_min = -out_step
@@ -110,6 +111,7 @@ class PIDAutotune:
 
     def set_param(self, target, step, noiseband, sampletime, lookback):
         self._setpoint = target
+        self._sampletime = sampletime
         self._outputstep = step
         self._out_max = step
         self._out_min = -step
@@ -144,8 +146,8 @@ class PIDAutotune:
         """
         divisors = self._tuning_rules[tuning_rule]
         kp = self._Ku * divisors[0]
-        ki = divisors[1] * self._Ku / self._Pu
-        kd = divisors[2] * self._Ku * self._Pu
+        ki = divisors[1] * self._Ku / self._Pu * self._sampletime
+        kd = divisors[2] * self._Ku * self._Pu / self._sampletime
         return PIDAutotune.PIDParams(kp, ki, kd)
 
     def run(self, input_val, time_input):

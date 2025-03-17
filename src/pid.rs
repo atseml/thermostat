@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use uom::si::{f64::Time, time::second};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Parameters {
@@ -55,10 +56,11 @@ impl Controller {
     //       - x1 * (kp + 2kd)
     //       + x2 * kd
     // y0  = clip(y0', ymin, ymax)
-    pub fn update(&mut self, input: f64) -> f64 {
+    pub fn update(&mut self, input: f64, interval: Time) -> f64 {
+        // adjust PID gains to sampling interval
         let kp = self.parameters.kp as f64;
-        let ki = self.parameters.ki as f64;
-        let kd = self.parameters.kd as f64;
+        let ki = self.parameters.ki as f64 / interval.get::<second>();
+        let kd = self.parameters.kd as f64 * interval.get::<second>();
 
         #[rustfmt::skip]
         let mut output = self.y1 - ki * self.target
@@ -128,7 +130,7 @@ mod test {
         while !values.iter().all(|value| target.contains(value)) && total_t < CYCLE_LIMIT {
             let next_t = (t + 1) % DELAY;
             // Feed the oldest temperature
-            output = pid.update(values[next_t]);
+            output = pid.update(values[next_t], Time::new::<second>(1.0));
             // Overwrite oldest with previous temperature - output
             values[next_t] = values[t] - output - (values[t] - DEFAULT) * LOSS;
             t = next_t;
