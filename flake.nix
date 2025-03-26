@@ -46,6 +46,8 @@
           cargo build --release --bin thermostat
         '';
 
+        checkNoDefaultFeatures = true;
+
         installPhase = ''
           mkdir -p $out $out/nix-support
           cp target/thumbv7em-none-eabihf/release/thermostat $out/thermostat.elf
