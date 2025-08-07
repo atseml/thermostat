@@ -165,6 +165,11 @@ class CtrlPanel(QObject):
                     auto_tuner_param = inner_param.opts["pid_autotune"]
                     self.autotuners.set_params(auto_tuner_param, ch, new_value)
 
+    async def apply_setting(self, param, channel, data, thermostat_param):
+        param.setOpts(lock=True) 
+        await self.thermostat.set_param(channel=channel, value=data, **thermostat_param)
+        param.setOpts(lock=False)
+
     @pyqtSlot(list)
     def update_pid(self, pid_settings):
         for settings in pid_settings:
