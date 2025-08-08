@@ -1,4 +1,7 @@
 from functools import partial
+from types import MethodType
+from PyQt6 import QtWidgets
+from PyQt6.QtGui import QAction
 from PyQt6.QtCore import pyqtSignal, QObject, QSignalBlocker, pyqtSlot
 import pyqtgraph.parametertree.parameterTypes as pTypes
 from pyqtgraph.parametertree import (
@@ -78,11 +81,35 @@ class CtrlPanel(QObject):
         for i, param in enumerate(self.params):
             param.channel = i
 
+        def _setTargetToMeasured(spinbox_self):
+            spinbox_self.setValue(self.params[spinbox_self._channel].child("readings", "temperature").value())
+        
+        def _targetContextMenuEvent(self, ev):
+            self._contextMenu = QtWidgets.QMenu()
+
+            self._contextMenu.addAction(QAction("Set To Measurement", self, triggered=self.setTargetToMeasured))
+            self._contextMenu.addSeparator()
+            
+            self._stdMenu = QtWidgets.QLineEdit(self).createStandardContextMenu()
+            self._contextMenu.addActions(self._stdMenu.actions())
+
+            self._contextMenu.addSeparator()
+            self._contextMenu.addAction(QAction("Step Up", self, triggered=self.stepUp))
+            self._contextMenu.addAction(QAction("Step Down", self, triggered=self.stepDown))
+
+            self._contextMenu.popup(ev.globalPos())
+
         for i, tree in enumerate(self.trees_ui):
             tree.setHeaderHidden(True)
             tree.setParameters(self.params[i], showTop=False)
             self.params[i].setValue = self._setValue
             self.params[i].sigTreeStateChanged.connect(self.send_command)
+
+            for item in self.params[i].child("output", "control_method", "target").items:
+                setattr(item.widget, "_param", item.param)
+                setattr(item.widget, "_channel", i)
+                item.widget.setTargetToMeasured = MethodType(_setTargetToMeasured, item.widget)
+                item.widget.contextMenuEvent = MethodType(_targetContextMenuEvent, item.widget)
 
             self.params[i].child("save").sigActivated.connect(
                 partial(self.save_settings, i)
