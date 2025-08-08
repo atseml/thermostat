@@ -9,42 +9,6 @@ from qasync import asyncSlot
 from pythermostat.autotune import PIDAutotuneState
 
 
-class MutexParameter(pTypes.ListParameter):
-    """
-    Mutually exclusive parameter where only one of its children is visible at a time, list selectable.
-
-    The ordering of the list items determines which children will be visible.
-    """
-
-    def __init__(self, **opts):
-        super().__init__(**opts)
-
-        self.sigValueChanged.connect(self.show_chosen_child)
-        self.sigValueChanged.emit(self, self.opts["value"])
-
-    def _get_param_from_value(self, value):
-        if isinstance(self.opts["limits"], dict):
-            values_list = list(self.opts["limits"].values())
-        else:
-            values_list = self.opts["limits"]
-
-        return self.children()[values_list.index(value)]
-
-    @pyqtSlot(object, object)
-    def show_chosen_child(self, value):
-        for param in self.children():
-            param.hide()
-
-        child_to_show = self._get_param_from_value(value.value())
-        child_to_show.show()
-
-        if child_to_show.opts.get("triggerOnShow", None):
-            child_to_show.sigValueChanged.emit(child_to_show, child_to_show.value())
-
-
-registerParameterType("mutex", MutexParameter)
-
-
 class CtrlPanel(QObject):
     
     sigQueuedChangedSetting = pyqtSignal(int)
@@ -99,6 +63,14 @@ class CtrlPanel(QObject):
                 partial(self.pid_auto_tune_request, i)
             )
 
+            def _ctrlTempMeth(param, control_method="constant_current"):
+                name = {"constant_current": "i_set", "temperature_pid":"target"}[control_method]
+                for item in param.children():
+                    item.show(item.opts["name"]==name)
+            
+            self.params[i].child("output", "control_method").sigValueChanged.connect(_ctrlTempMeth)
+            _ctrlTempMeth(self.params[i].child("output", "control_method"))
+
         self.thermostat.pid_update.connect(self.update_pid)
         self.thermostat.report_update.connect(self.update_report)
         self.thermostat.thermistor_update.connect(self.update_thermistor)
@@ -149,7 +121,7 @@ class CtrlPanel(QObject):
                 continue
             
             thermostat_param = inner_param.opts["thermostat:set_param"]
-            if inner_param.opts["type"] in ["mutex", "list"]:
+            if inner_param.opts["type"] in ["list"]:
                 match inner_param.name(), data:
                     case "rate", None:
                         thermostat_param = thermostat_param.copy()

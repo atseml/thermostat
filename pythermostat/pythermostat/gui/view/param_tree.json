@@ -31,7 +31,7 @@
             {
                "name": "control_method",
                "title": "Control Method",
-               "type": "mutex",
+               "type": "list",
                "excludeQueue": true,
                "limits": {
                   "Constant Current": "constant_current",
