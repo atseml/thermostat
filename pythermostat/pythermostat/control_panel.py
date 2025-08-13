@@ -5,8 +5,9 @@ import logging
 import argparse
 import importlib.resources
 import json
+from functools import partial
 from PyQt6 import QtWidgets, QtGui, uic
-from PyQt6.QtCore import pyqtSlot
+from PyQt6.QtCore import Qt, pyqtSlot
 import qasync
 from qasync import asyncSlot, asyncClose
 from pythermostat.autotune import PIDAutotuneState
@@ -70,6 +71,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self._on_pid_autotune_state_changed
         )
 
+        self.apply_all_settings_btns = [None for i in range(self.NUM_CHANNELS)]
+
         # Handlers for disconnections
         async def autotune_disconnect():
             for ch in range(self.NUM_CHANNELS):
@@ -98,6 +101,29 @@ class MainWindow(QtWidgets.QMainWindow):
             [self.ch0_tree, self.ch1_tree],
             get_ctrl_panel_config(args),
         )
+
+        for ch in range(self.NUM_CHANNELS):
+            vertical_layouts = "verticalLayout"+["_2", ""][ch]
+            palette = QtGui.QPalette()
+            brush = QtGui.QBrush(QtGui.QColor(246, 211, 45))
+
+            brush.setStyle(Qt.BrushStyle.SolidPattern)
+            palette.setBrush(QtGui.QPalette.ColorGroup.Active, QtGui.QPalette.ColorRole.Button, brush)
+            brush = QtGui.QBrush(QtGui.QColor(246, 211, 45))
+            brush.setStyle(Qt.BrushStyle.SolidPattern)
+            palette.setBrush(QtGui.QPalette.ColorGroup.Inactive, QtGui.QPalette.ColorRole.Button, brush)
+            brush = QtGui.QBrush(QtGui.QColor(246, 211, 45))
+            brush.setStyle(Qt.BrushStyle.SolidPattern)
+            palette.setBrush(QtGui.QPalette.ColorGroup.Disabled, QtGui.QPalette.ColorRole.Button, brush)
+
+            self.apply_all_settings_btns[ch] = QtWidgets.QPushButton(f"Apply Changes to Channel {ch}", parent=getattr(self, f"ch{ch}_tab")) #what even is this bruh TT_TT
+            getattr(self, vertical_layouts).addWidget(self.apply_all_settings_btns[ch])
+
+            self.apply_all_settings_btns[ch].setPalette(palette)
+            self.apply_all_settings_btns[ch].setVisible(False)
+
+            self._ctrl_panel_view.sigQueuedChangedSetting.connect(self._show_apply_all_settings_btn)
+            self.apply_all_settings_btns[ch].clicked.connect(partial(self._apply_all_settings_btn_clicked, ch))
 
         # Graphs
         self._channel_graphs = LiveDataPlotter(
@@ -139,6 +165,29 @@ class MainWindow(QtWidgets.QMainWindow):
             self._thermostat.connection_state = ThermostatConnectionState.DISCONNECTED
         except:
             pass
+
+    @pyqtSlot(int)
+    def _show_apply_all_settings_btn(self, ch):
+        self.apply_all_settings_btns[ch].setVisible(True)
+
+    @asyncSlot(bool)
+    async def _apply_all_settings_btn_clicked(self, ch, clicked):
+        self._queued_changes = self._ctrl_panel_view.queued_changes
+
+        for param in self._queued_changes:
+            if self._queued_changes[param][0] != ch:
+                continue
+            data = self._queued_changes[param][1]
+            thermostat_param = self._queued_changes[param][2]
+            if param.opts.get("suffix", None) == "mA":
+                data /= 1000
+            if not "pid_autotune" in param.opts:
+                await self._ctrl_panel_view.apply_setting(param, ch, data, thermostat_param)
+            else:
+                self._ctrl_panel_view.autotuners.set_params(param.opts["pid_autotune"], ch, param)
+            
+        self._ctrl_panel_view.flush_queued_settings()
+        self.apply_all_settings_btns[ch].setVisible(False)
 
     @pyqtSlot(ThermostatConnectionState)
     def _on_connection_state_changed(self, state):
