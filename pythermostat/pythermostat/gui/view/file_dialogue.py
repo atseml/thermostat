@@ -10,10 +10,12 @@ class FileDialogue(QtWidgets.QFileDialog):
         super().__init__()
     
     @asyncSlot(str, str, str)
-    async def display_file_dialogue(self, title, default_path, suffix, file_mode=QtWidgets.QFileDialog.FileMode.ExistingFile, accept_mode=QtWidgets.QFileDialog.AcceptMode.AcceptOpen):
+    async def display_file_dialogue(self, title, default_path, suffix, default_file=None, file_mode=QtWidgets.QFileDialog.FileMode.ExistingFile, accept_mode=QtWidgets.QFileDialog.AcceptMode.AcceptOpen):
         self.setOption(QtWidgets.QFileDialog.Option.DontUseNativeDialog)
         self.setWindowTitle(title)
         self.setDirectory(default_path)
+        if default_file:
+            self.selectFile(default_file)
         self.setFileMode(file_mode)
         self.setAcceptMode(accept_mode)
         self.setNameFilter(suffix)
