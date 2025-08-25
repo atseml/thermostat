@@ -1,4 +1,7 @@
 from functools import partial
+from types import MethodType
+from PyQt6 import QtWidgets
+from PyQt6.QtGui import QAction
 from PyQt6.QtCore import pyqtSignal, QObject, QSignalBlocker, pyqtSlot
 import pyqtgraph.parametertree.parameterTypes as pTypes
 from pyqtgraph.parametertree import (
@@ -78,12 +81,43 @@ class CtrlPanel(QObject):
         for i, param in enumerate(self.params):
             param.channel = i
 
+        def _targetContextMenuEvent(self, ev):
+            self._contextMenu = QtWidgets.QMenu()
+
+            self._contextMenu.addAction(QAction("Set to Measured Temperature", self, triggered=lambda: self.setValue(self._temp.value())))
+            self._contextMenu.addSeparator()
+            
+            self._stdMenu = QtWidgets.QLabel(self).createStandardContextMenu()
+            self._contextMenu.addActions(self._stdMenu.actions())
+
+            self._contextMenu.popup(ev.globalPos())
+
+        def _tempContextMenuEvent(self, ev):
+            self._contextMenu = QtWidgets.QMenu()
+            self._contextMenu.addAction(QAction("Set Setpoint as Measurement", self, triggered=lambda: self._target.setValue(self._temp.value())))
+            self._contextMenu.addSeparator()
+
+            self._contextMenu.addAction(QAction("&Copy", self, triggered=lambda: QtWidgets.QApplication.clipboard().setText(str(self._temp.value()))))
+
+            self._contextMenu.popup(ev.globalPos())
+
         for i, tree in enumerate(self.trees_ui):
             tree.setHeaderHidden(True)
             tree.setParameters(self.params[i], showTop=False)
             self.params[i].setValue = self._setValue
             self.params[i].sigTreeStateChanged.connect(self.send_command)
 
+            for target_item in self.params[i].child("output", "control_method", "target").items:
+                setattr(target_item.widget, "_temp", self.params[i].child("readings", "temperature"))
+                setattr(target_item.widget, "_channel", i)
+                target_item.widget.contextMenuEvent = MethodType(_targetContextMenuEvent, target_item.widget)
+
+                for temp_item in self.params[i].child("readings", "temperature").items:
+                    setattr(temp_item.displayLabel, "_temp", self.params[i].child("readings", "temperature"))
+                    setattr(temp_item.displayLabel, "_target", target_item.widget)
+                    setattr(temp_item.displayLabel, "_channel", i)
+                    temp_item.displayLabel.contextMenuEvent = MethodType(_tempContextMenuEvent, temp_item.displayLabel)
+            
             self.params[i].child("save").sigActivated.connect(
                 partial(self.save_settings, i)
             )
