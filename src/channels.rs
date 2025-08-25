@@ -16,10 +16,11 @@ use smoltcp::time::Instant;
 use stm32f4xx_hal::hal;
 use uom::{
     si::{
+        capacitance::nanofarad,
         electric_current::ampere,
         electric_potential::{millivolt, volt},
-        electrical_resistance::ohm,
-        f64::{ElectricCurrent, ElectricPotential, ElectricalResistance, Time},
+        electrical_resistance::{kiloohm, ohm},
+        f64::{Capacitance, ElectricCurrent, ElectricPotential, ElectricalResistance, Ratio, Time},
         ratio::ratio,
         thermodynamic_temperature::degree_celsius,
     },
@@ -64,6 +65,21 @@ const DAC_OUT_V_MAX: ElectricPotential = ElectricPotential {
     value: 3.0,
 };
 
+#[derive(Default, Clone, Copy)]
+struct RcFilterHistory{
+    value: ElectricCurrent,
+    rc: Time,
+}
+
+impl RcFilterHistory {
+    pub fn default() -> Self {
+        RcFilterHistory {
+            value: ElectricCurrent::new::<ampere>(0.0),
+            rc: (ElectricalResistance::new::<kiloohm>(10.0) * Capacitance::new::<nanofarad>(10.0)),
+        }
+    }
+}
+
 pub struct Channels {
     channel0: Channel<Channel0>,
     channel1: Channel<Channel1>,
@@ -71,6 +87,7 @@ pub struct Channels {
     /// stm32f4 integrated adc
     pins_adc: pins::PinsAdc,
     pwm: pins::PwmPins,
+    prev_tec_i: [RcFilterHistory; CHANNELS],
 }
 
 impl Channels {
@@ -98,6 +115,7 @@ impl Channels {
             adc,
             pins_adc,
             pwm,
+            prev_tec_i: [RcFilterHistory::default(); CHANNELS],
         };
         for channel in 0..CHANNELS {
             channels.calibrate_dac_value(channel);
@@ -386,11 +404,25 @@ impl Channels {
         self.adc.get_postfilter(index).unwrap()
     }
 
+    fn iir_rc_filter(&mut self, tec_i: ElectricCurrent, channel: usize) -> ElectricCurrent {
+        let d_t = self.channel_state(channel).get_adc_interval();
+        let prev_tec_i = &mut self.prev_tec_i[channel];
+
+        let smoothness: Ratio = (d_t * 0.1) / (prev_tec_i.rc + d_t);
+
+        prev_tec_i.value += smoothness * (tec_i- prev_tec_i.value); // https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter
+
+        prev_tec_i.value
+    }
+
     // Get current passing through TEC
     pub fn get_tec_i(&mut self, channel: usize) -> ElectricCurrent {
         let tec_i = (self.adc_read(channel, PinsAdcReadTarget::ITec, 16)
             - self.adc_read(channel, PinsAdcReadTarget::VRef, 16))
             / ElectricalResistance::new::<ohm>(0.4);
+
+        let tec_i = self.iir_rc_filter(tec_i, channel);
+
         match self.channel_state(channel).polarity {
             Polarity::Normal => tec_i,
             Polarity::Reversed => -tec_i,
