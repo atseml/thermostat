@@ -131,5 +131,17 @@ class Thermostat(QObject, metaclass=PropertyMeta):
     async def get_fan(self):
         return await self._client.get_fan()
 
+    async def get_output(self):
+        return await self._client.get_output()
+
+    async def get_pid(self):
+        return await self._client.get_pid()
+
+    async def get_b_parameter(self):
+        return await self._client.get_b_parameter()
+
+    async def get_postfilter(self):
+        return await self._client.get_postfilter()
+
     async def set_param(self, topic, channel, field="", value=""):
         await self._client.set_param(topic, channel, field, value)

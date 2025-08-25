@@ -3,6 +3,10 @@ from PyQt6.QtCore import pyqtSlot, QSignalBlocker
 from qasync import asyncSlot
 from pythermostat.gui.model.thermostat import ThermostatConnectionState
 from pythermostat.gui.view.net_settings_input_diag import NetSettingsInputDiag
+from pythermostat.gui.view.file_dialogue import FileDialogue
+from functools import singledispatch
+import json
+import os
 
 
 class ConnectionDetailsMenu(QtWidgets.QMenu):
@@ -93,10 +97,12 @@ class PlotOptionsMenu(QtWidgets.QMenu):
 
 
 class ThermostatSettingsMenu(QtWidgets.QMenu):
-    def __init__(self, thermostat, info_box, style):
+    def __init__(self, thermostat, info_box, question_box, warning_box, style):
         super().__init__()
         self._thermostat = thermostat
         self._info_box = info_box
+        self._question_box = question_box
+        self._warning_box = warning_box 
         self._style = style
 
         self.hw_rev_data = {}
@@ -232,6 +238,119 @@ class ThermostatSettingsMenu(QtWidgets.QMenu):
         self.save_config_action = QtGui.QAction("Save Settings", self)
         self.save_config_action.triggered.connect(save)
         self.addAction(self.save_config_action)
+
+        async def write_to_json(path):
+            async def patch_get_output():
+                channel_outputs = []
+                channel_centers = []
+                for output in await self._thermostat.get_output():
+                    center = output.pop("center")
+                    channel_centers.append({"channel": output["channel"], center: ""})
+                    channel_outputs.append(output)
+                return channel_outputs, channel_centers
+            outputs, centers = await patch_get_output()
+            params = {
+                "output":     outputs,
+                "center":     centers,
+                "pid":        await self._thermostat.get_pid(),
+                "b-p":        await self._thermostat.get_b_parameter(),
+                "postfilter": await self._thermostat.get_postfilter()
+            }
+            
+            settings = {}
+
+            async def _add_to_setting(settings_type, _settings):
+                if not settings.get(settings_type):
+                    settings[settings_type] = {}
+                for name, setting in _settings.items():
+                    settings[settings_type][name] = setting
+
+            await _add_to_setting((await self._thermostat.get_ipv4())["addr"], params)
+
+            with open(path, "w+", encoding="utf-8") as f:
+                json.dump(settings, f, ensure_ascii=False)
+
+        @asyncSlot(bool)
+        async def save_to_json(_):
+            path = await FileDialogue().display_file_dialogue("Save Config", os.getenv("HOME"), "*.json", QtWidgets.QFileDialog.FileMode.AnyFile, QtWidgets.QFileDialog.AcceptMode.AcceptSave)
+            try:
+                await write_to_json(path)
+            except Exception as e:
+                self._warning_box.display_warning_box(
+                    "Saving settings to json failed",
+                    f"Could not save to '{path}' correctly...",
+                    f"Error: \n{e}"
+                )
+                return 
+
+            self._info_box.display_info_box(
+                "Settings saved as JSON", 
+                f"All channel settings have been saved to '{path}'"
+            )
+
+        self.save_config_json = QtGui.QAction("Save Settings to JSON", self)
+        self.save_config_json.triggered.connect(save_to_json)
+        self.addAction(self.save_config_json)
+
+        async def _walk_json_tree(settings):
+            settings_stack = list(settings.items())
+            settings_path_stack = []
+            settings_path_len_stack = []
+
+            def _push_stack(key, val, pushed):
+                settings_path_stack.append(key)
+                settings_path_len_stack.append(len(val))
+                settings_stack.extend(pushed)
+
+            while settings_stack:
+                key, val = settings_stack.pop()
+                if type(val) is dict:
+                    _push_stack(key, val, val.items())
+                elif type(val) is list:
+                    _push_stack(key, val, [(channel_cfg.pop("channel"), channel_cfg) for channel_cfg in val])
+                elif type(val) is int or type(val) is float or type(val) is str:
+                    topic, channel = tuple(filter(lambda x: x not in ["params", "parameters"], settings_path_stack))
+                    await self._thermostat.set_param(topic, channel, key, val)
+
+                    if not settings_path_stack:
+                        continue
+                    settings_path_len_stack[-1] -= 1
+                    while settings_path_len_stack[-1] <= 0:
+                        settings_path_stack.pop()
+                        settings_path_len_stack.pop()
+                        if not settings_path_stack:
+                            break
+                        settings_path_len_stack[-1] -= 1
+
+        @asyncSlot(bool)
+        async def load_from_json(_):
+            path = await FileDialogue().display_file_dialogue("Load Config", os.getenv("HOME"), "*.json")
+            try: 
+                with open(path, 'r', encoding="utf-8") as f:
+                    settings = json.load(f)
+                for ip in settings:
+                    assert self._thermostat.connected()
+                    if ip != (await self._thermostat.get_ipv4())["addr"]:
+                        await self._thermostat.set_ipv4(ip)
+                        await self._thermostat.end_session()
+                        self._thermostat.connection_state = ThermostatConnectionState.DISCONNECTED
+                    await _walk_json_tree(settings[ip])
+            except Exception as e:
+                self._warning_box.display_warning_box(
+                    "Loading settings from json failed",
+                    f"Could not load '{path}' correctly...",
+                    f"Error: \n{e}"
+                )
+                return 
+
+            self._info_box.display_info_box(
+                "Settings loaded from JSON",
+                f"All channel settings from '{path}' have been loaded"
+            )
+
+        self.load_config_json = QtGui.QAction("Load Settings to JSON", self)
+        self.load_config_json.triggered.connect(load_from_json)
+        self.addAction(self.load_config_json)
 
         def about_thermostat():
             QtWidgets.QMessageBox.about(
