@@ -45,7 +45,7 @@ class MutexParameter(pTypes.ListParameter):
 registerParameterType("mutex", MutexParameter)
 
 
-class CtrlPanel(QObject):
+class SettingsTreeGui(QObject):
     def __init__(
         self,
         thermostat,

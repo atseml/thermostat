@@ -12,7 +12,7 @@ from qasync import asyncSlot, asyncClose
 from pythermostat.autotune import PIDAutotuneState
 from pythermostat.gui.model.thermostat import Thermostat, ThermostatConnectionState
 from pythermostat.gui.model.pid_autotuner import PIDAutoTuner
-from pythermostat.gui.view.ctrl_panel import CtrlPanel
+from pythermostat.gui.view.settings_tree import SettingsTreeGui
 from pythermostat.gui.view.info_box import InfoBox
 from pythermostat.gui.view.menus import PlotOptionsMenu, ThermostatSettingsMenu, ConnectionDetailsMenu
 from pythermostat.gui.view.live_plot_view import LiveDataPlotter
@@ -91,7 +91,7 @@ class MainWindow(QtWidgets.QMainWindow):
             with open(args.param_tree, "r", encoding="utf-8") as f:
                 return json.load(f)["ctrl_panel"]
 
-        self._ctrl_panel_view = CtrlPanel(
+        self._ctrl_panel_view = SettingsTreeGui(
             self._thermostat,
             self._autotuners,
             self._info_box,
