@@ -4,6 +4,7 @@ import asyncio
 import logging
 import argparse
 import importlib.resources
+from functools import partial
 import json
 from PyQt6 import QtWidgets, QtGui, uic
 from PyQt6.QtCore import pyqtSlot
@@ -132,6 +133,16 @@ class MainWindow(QtWidgets.QMainWindow):
             lambda: self._thermostat.set_update_s(self.report_refresh_spin.value())
         )
 
+        self._current_i = None #[None for _ in range(self.NUM_CHANNELS)]
+        self._last_i_setpoint = self._current_i
+        self._thermostat.report_update.connect(self._update_current_i)
+
+        self.start_btn.setVisible(False)
+        self.stop_btn.setVisible(False)
+
+        self.start_btn.clicked.connect(self.start_btn_pressed)
+        self.stop_btn.clicked.connect(self.stop_btn_pressed)
+
     @asyncClose
     async def closeEvent(self, _event):
         try:
@@ -139,6 +150,34 @@ class MainWindow(QtWidgets.QMainWindow):
             self._thermostat.connection_state = ThermostatConnectionState.DISCONNECTED
         except:
             pass
+
+    async def ctrlCurrent(self, ch, val):
+        await self._ctrl_panel_view.apply_setting(self._ctrl_panel_view.params[ch].child("output", "control_method", "i_set"), ch, val, {'topic': 'output', 'field': 'i_set'})
+
+    @pyqtSlot(list)
+    def _update_current_i(self, report_data):
+        if self._current_i != (current_i:=[settings["i_set"] for settings in report_data]):
+            self.start_btn.setVisible(enable_start_btn:=(self._last_i_setpoint!=current_i and not any(i!=0.0 for i in current_i)))
+            self.stop_btn.setVisible(not enable_start_btn)
+            if self._last_i_setpoint is None:
+                self.start_btn.setVisible(False)
+                self._last_i_setpoint = current_i                
+            self._current_i = current_i
+
+    @asyncSlot(bool)
+    async def stop_btn_pressed(self):
+        for ch in range(self.NUM_CHANNELS):
+            self.start_btn.setEnabled(True)
+            self.stop_btn.setEnabled(False)
+            self._last_i_setpoint[ch] = self._current_i[ch]
+            await self.ctrlCurrent(ch, 0.0)
+
+    @asyncSlot(bool)
+    async def start_btn_pressed(self):
+        for ch in range(self.NUM_CHANNELS):
+            self.start_btn.setEnabled(False)
+            self.stop_btn.setEnabled(True)
+            await self.ctrlCurrent(ch, self._last_i_setpoint[ch])
 
     @pyqtSlot(ThermostatConnectionState)
     def _on_connection_state_changed(self, state):
